@@ -154,11 +154,19 @@ int main() {
     for (int y = 0; y < height; y++) {
 
       uint16_t* row = (uint16_t*)(frame->data[0] + y * frame->linesize[0]);
+
+      std::cout << 'Y' << frame->linesize[0] << std::endl;
+
       // pointer to U
       uint16_t* rowU = (uint16_t*)(frame->data[1] + y * frame->linesize[1]);
+
+      std::cout << 'U' << frame->linesize[1] << std::endl;
+      
       // pointer to V
       uint16_t* rowV = (uint16_t*)(frame->data[2] + y * frame->linesize[2]);
-      
+
+      std::cout << 'V' << frame->linesize[2] << std::endl;
+            
 
       uint16_t* row16bit = image10bit.ptr<uint16_t>(y);
       BitStreamWriter bitstream((uint8_t*)row, frame->linesize[0] / 2);
@@ -172,19 +180,24 @@ int main() {
         uint16_t y1 = (pixel1[0] * 66 + pixel1[1] * 129 + pixel1[2] * 25 + 128) >> 8;
         uint16_t y2 = (pixel2[0] * 66 + pixel2[1] * 129 + pixel2[2] * 25 + 128) >> 8;
 
-        uint16_t u = (pixel1[0] * -38 + pixel1[1] * -74 + pixel1[2] * 112 + 128) >> 8;
-        uint16_t v = (pixel1[0] * 112 + pixel1[1] * -94 + pixel1[2] * -18 + 128) >> 8;
+     
+        float R_norm = static_cast<float>(pixel1[2]) / 1023.0;
+        float G_norm = static_cast<float>(pixel1[1]) / 1023.0;
+        float B_norm = static_cast<float>(pixel1[0]) / 1023.0;
 
-        row[x] = y1;
+        // Calculate YUV components
+        float Y = 0.299 * R_norm + 0.587 * G_norm + 0.114 * B_norm;
+        float U = (B_norm - Y) * 0.493;
+        float V = (R_norm - Y) * 0.877;
+
+        // Convert the YUV components back to 10-bit values (if needed)
+        uint16_t U_10bit = static_cast<uint16_t>((U + 0.5) * 1023);
+        uint16_t V_10bit = static_cast<uint16_t>((V + 0.5) * 1023);
+        row[x] = y1; 
         row[x + 1] = y2;
         
-        rowU[x] = 512;
-        rowV[x] = 512;
-
-        rowU[x+1] = 512;
-        rowV[x+1] = 512;
-
-
+        rowU[x/2] = U_10bit;
+        rowV[x/2] = V_10bit;
 
       }
     }
