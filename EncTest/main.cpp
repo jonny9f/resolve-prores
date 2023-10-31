@@ -163,7 +163,7 @@ int main() {
       uint16_t* row16bit = image10bit.ptr<uint16_t>(y);
       BitStreamWriter bitstream((uint8_t*)row, frame->linesize[0] / 2);
       
-      for (int x = 0; x < width; x++) {
+      for (int x = 0; x < width; x += 2) {
 
         // extract RGB
         uint16_t* pixel1 = row16bit + x * 3;
@@ -176,9 +176,14 @@ int main() {
         uint16_t v = (pixel1[0] * 112 + pixel1[1] * -94 + pixel1[2] * -18 + 128) >> 8;
 
         row[x] = y1;
+        row[x + 1] = y2;
         
         rowU[x] = 512;
         rowV[x] = 512;
+
+        rowU[x+1] = 512;
+        rowV[x+1] = 512;
+
 
 
       }

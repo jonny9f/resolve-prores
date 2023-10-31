@@ -4,3 +4,5 @@ x264
 .vscode/launch.json
 .vscode/output.mov
 .vscode/settings.json
+EncTest/output.mov
+EncTest/prores_encoder
