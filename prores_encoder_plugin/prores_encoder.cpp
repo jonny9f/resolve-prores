@@ -7,11 +7,22 @@
 
 #include <algorithm>
 
-#include "x264.h"
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/imgutils.h>
+}
+
+
+const enum { X264_RC_CQP, X264_RC_CRF, X264_RC_ABR };
+static const char * const prores_preset_names[] = { "proxy", "LT", "422", "422HQ", "4444", "4444HQ", 0 };
+
+static const char * const prores_tune_names[] = { "film", "animation", "grain", "stillimage", "psnr", "ssim", "fastdecode", "zerolatency", 0 };
+
+static const char * const prores_profile_names[] = { "baseline", "main", "high", "high10", "high422", "high444", 0 };
 
 // NOTE: When creating a plugin for release, please generate a new Codec UUID in order to prevent conflicts with other third-party plugins.
 const uint8_t ProResEncoder::s_UUID[] = { 0x6a, 0x88, 0xe8, 0x41, 0xd8, 0xe4, 0x41, 0x4b, 0x87, 0x9e, 0xa4, 0x80, 0xfc, 0x90, 0xda, 0xb4 };
-
 
 static std::string s_TmpFileName = "/tmp/x264_multipass.log";
 
@@ -99,7 +110,7 @@ private:
         m_Tune = 1;
         m_Profile = 0;
         m_NumPasses = 1;
-        m_QualityMode = X264_RC_CQP;
+        m_QualityMode = 0;// X264_RC_CQP;
         m_QP = 25;
         m_BitRate = 0;
     }
@@ -141,7 +152,7 @@ private:
             std::vector<int> valuesVec;
 
             int32_t curVal = 1;
-            const char* const* pPresets = x264_preset_names;
+            const char* const* pPresets = prores_preset_names;
             while (*pPresets != 0)
             {
                 valuesVec.push_back(curVal++);
@@ -165,7 +176,7 @@ private:
             std::vector<int> valuesVec;
 
             int32_t curVal = 1;
-            const char* const* pPresets = x264_tune_names;
+            const char* const* pPresets = prores_preset_names;
             while (*pPresets != 0)
             {
                 valuesVec.push_back(curVal++);
@@ -317,12 +328,12 @@ public:
 
     const char* GetEncPreset() const
     {
-        return x264_preset_names[m_EncPreset];
+        return prores_preset_names[m_EncPreset];
     }
 
     const char* GetTune() const
     {
-        return x264_tune_names[m_Tune];
+        return prores_tune_names[m_Tune];
     }
 
     const char* GetProfile() const
@@ -331,16 +342,16 @@ public:
         switch (m_Profile)
         {
             case 1:
-                pProfile = x264_profile_names[0];
+                pProfile = prores_profile_names[0];
                 break;
             case 2:
-                pProfile = x264_profile_names[1];
+                pProfile = prores_profile_names[1];
                 break;
             case 3:
-                pProfile = x264_profile_names[2];
+                pProfile = prores_profile_names[2];
                 break;
             case 4:
-                pProfile = x264_profile_names[4];
+                pProfile = prores_profile_names[4];
             default:
                 break;
         }

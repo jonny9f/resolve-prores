@@ -11,6 +11,9 @@ struct x264_t;
 struct x264_param_t;
 class UISettingsController;
 
+
+
+
 class ProResEncoder : public IPluginCodecRef
 {
 public:
