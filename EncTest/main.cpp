@@ -8,38 +8,6 @@ extern "C" {
 #include <opencv2/opencv.hpp>
 
 
-class BitStreamWriter {
-public:
-    BitStreamWriter(uint8_t* buffer, size_t bufferSize) : buffer_(buffer), bufferSize_(bufferSize), byteIndex_(0), bitPos_(0) {
-        assert(buffer != nullptr && bufferSize > 0);
-    }
-
-    // Append a specified number of bits (up to 16 bits) to the buffer
-    void AppendBits(uint16_t value, int numBits) {
-        for (int i = numBits - 1; i >= 0; i--) {
-            uint16_t bit = (value >> i) & 1;
-            buffer_[byteIndex_] |= (bit << bitPos_);
-            bitPos_++;
-
-            if (bitPos_ == 8) {
-                byteIndex_++;
-                bitPos_ = 0;
-
-                if (byteIndex_ >= bufferSize_) {
-                    // Buffer overflow, handle the error as needed
-                    // You can throw an exception or take appropriate action
-                }
-            }
-        }
-    }
-
-private:
-    uint8_t* buffer_;
-    size_t bufferSize_;
-    size_t byteIndex_;
-    int bitPos_;
-};
-
 
 int main() {
     av_register_all();
