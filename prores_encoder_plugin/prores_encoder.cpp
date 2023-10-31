@@ -4,17 +4,12 @@
 #include <cstring>
 #include <vector>
 #include <stdint.h>
+#include <iostream>
 
 #include <algorithm>
 
-extern "C" {
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/imgutils.h>
-}
 
-
-const enum { X264_RC_CQP, X264_RC_CRF, X264_RC_ABR };
+enum { X264_RC_CQP, X264_RC_CRF, X264_RC_ABR };
 static const char * const prores_preset_names[] = { "proxy", "LT", "422", "422HQ", "4444", "4444HQ", 0 };
 
 static const char * const prores_tune_names[] = { "film", "animation", "grain", "stillimage", "psnr", "ssim", "fastdecode", "zerolatency", 0 };
@@ -483,17 +478,17 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
 ProResEncoder::ProResEncoder()
     : m_pContext(0)
     , m_ColorModel(-1)
-    , m_IsMultiPass(false)
-    , m_PassesDone(0)
     , m_Error(errNone)
 {
+    av_register_all();
+    avcodec_register_all();
 }
 
 ProResEncoder::~ProResEncoder()
 {
     if (m_pContext)
     {
-        x264_encoder_close(m_pContext);
+        avio_close(m_pContext->pb);
         m_pContext = 0;
     }
 }
@@ -511,19 +506,6 @@ void ProResEncoder::DoFlush()
         sts = DoProcess(NULL);
     }
 
-    ++m_PassesDone;
-
-    if (!m_IsMultiPass || (m_PassesDone > 1))
-    {
-        // no need to do anything
-        return;
-    }
-
-    if (m_PassesDone == 1)
-    {
-        // setup new pass
-        SetupContext(true /* isFinalPass */);
-    }
 }
 
 StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
@@ -540,91 +522,6 @@ StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
     return errNone;
 }
 
-void ProResEncoder::SetupContext(bool p_IsFinalPass)
-{
-    if (m_pContext)
-    {
-        x264_encoder_close(m_pContext);
-        m_pContext = 0;
-    }
-
-    x264_param_t param;
-
-    const char* pProfile = m_pSettings->GetProfile();
-    m_ColorModel = (((pProfile != NULL) && (strcmp(pProfile, "high422") == 0)) ? X264_CSP_UYVY : X264_CSP_NV12);
-
-    x264_param_default_preset(&param, m_pSettings->GetEncPreset(), m_pSettings->GetTune());
-    param.i_csp              = m_ColorModel;
-    param.i_width            = m_CommonProps.GetWidth();
-    param.i_height           = m_CommonProps.GetHeight();
-    param.b_vfr_input        = 0;
-    param.i_bitdepth         = 8;
-    param.i_bframe           = 2;
-    param.i_bframe_adaptive  = X264_B_ADAPT_NONE;
-    param.i_bframe_pyramid   = X264_B_PYRAMID_NORMAL;
-    param.b_open_gop         = 1;
-    param.i_keyint_max       = 12;
-    param.i_fps_num          = m_CommonProps.GetFrameRateNum();
-    param.i_fps_den          = m_CommonProps.GetFrameRateDen();
-    param.b_repeat_headers   = 0;
-    param.b_annexb           = 0;
-    param.b_stitchable       = 1;
-    param.vui.b_fullrange    = m_CommonProps.IsFullRange();
-
-    if (strcmp(pProfile, "baseline") != 0)
-    {
-        const uint8_t fieldOrder = m_CommonProps.GetFieldOrder();
-        param.b_interlaced = ((fieldOrder == fieldTop) || (fieldOrder == fieldBottom));
-    }
-
-    param.rc.i_rc_method = m_pSettings->GetQualityMode();
-    if (!m_IsMultiPass && (param.rc.i_rc_method != X264_RC_ABR))
-    {
-        const int qp = m_pSettings->GetQP();
-
-        param.rc.i_qp_constant = qp;
-        param.rc.f_rf_constant = std::min<int>(50, qp);
-        param.rc.f_rf_constant_max = std::min<int>(51, qp + 5);
-    }
-    else if (param.rc.i_rc_method == X264_RC_ABR)
-    {
-        param.rc.i_bitrate = m_pSettings->GetBitRate();
-        param.rc.i_vbv_buffer_size = m_pSettings->GetBitRate();
-        param.rc.i_vbv_max_bitrate = m_pSettings->GetBitRate();
-    }
-
-    if (m_IsMultiPass)
-    {
-        if (p_IsFinalPass && (m_PassesDone > 0))
-        {
-            param.rc.b_stat_read = 1;
-            param.rc.b_stat_write = 0;
-            x264_param_apply_fastfirstpass(&param);
-        }
-        else if (!p_IsFinalPass)
-        {
-            param.rc.b_stat_read = 0;
-            param.rc.b_stat_write = 1;
-        }
-
-        param.rc.psz_stat_out = &s_TmpFileName[0];
-        param.rc.psz_stat_in = &s_TmpFileName[0];
-    }
-
-    if (pProfile != NULL)
-    {
-        int resCode = x264_param_apply_profile(&param, pProfile);
-        if (resCode != 0)
-        {
-            m_Error = errFail;
-            return;
-        }
-    }
-
-    m_pContext = x264_encoder_open(&param);
-    m_Error = ((m_pContext != NULL) ? errNone : errFail);
-}
-
 StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
 {
     assert(m_pContext == NULL);
@@ -632,80 +529,56 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
     m_CommonProps.Load(p_pBuff);
 
     const std::string& path = m_CommonProps.GetPath();
-    if (!path.empty())
-    {
-        s_TmpFileName = path;
-        s_TmpFileName.append(".pass.log");
-    }
-    else
-    {
-        s_TmpFileName = "/tmp/x264_multipass.log";
-    }
 
     m_pSettings.reset(new UISettingsController(m_CommonProps));
     m_pSettings->Load(p_pBuff);
 
-    uint8_t isMultiPass = 0;
-    if (m_pSettings->GetNumPasses() == 2)
+  if (m_pContext)
     {
-        m_IsMultiPass = true;
-        isMultiPass = 1;
+        avio_close(m_pContext->pb);
+        m_pContext = 0;
     }
 
-    // @TODO: Need to fill maximum output size pIOPropInitFrameBytes if know or otherwise can be larger than an image
-    StatusCode sts = p_pBuff->SetProperty(pIOPropMultiPass, propTypeUInt8, &isMultiPass, 1);
-    if (sts != errNone)
-    {
-        return sts;
+    // Find the ProRes codec
+    AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
+    if (!codec) {
+        std::cerr << "ProRes codec not found" << std::endl;
+        return errFail;
     }
 
-    // setup context for cookie
-    SetupContext(true /* isFinalPass */);
-    if (m_Error != errNone)
-    {
-        return m_Error;
+    // Create a new AVStream for the video
+    AVStream* outStream = avformat_new_stream(m_pContext, codec);
+    if (!outStream) {
+        std::cerr << "Failed to create new stream" << std::endl;
+        return errFail;
     }
 
-    x264_nal_t* pNals = 0;
-    int numNals = 0;
-    int hdrBytes = x264_encoder_headers(m_pContext, &pNals, &numNals);
-    if (hdrBytes > 0)
-    {
-        std::vector<uint8_t> cookie;
-        for (int i = 0; i < numNals; ++i)
-        {
-            if (pNals[i].i_type == NAL_SEI)
-            {
-                continue;
-            }
-
-            pNals[i].p_payload[0] = 0;
-            pNals[i].p_payload[1] = 0;
-            pNals[i].p_payload[2] = 0;
-            pNals[i].p_payload[3] = 1;
-            cookie.insert(cookie.end(), pNals[i].p_payload, pNals[i].p_payload + pNals[i].i_payload);
-        }
-
-        if (!cookie.empty())
-        {
-            p_pBuff->SetProperty(pIOPropMagicCookie, propTypeUInt8, &cookie[0], cookie.size());
-            uint32_t fourCC = 0;
-            p_pBuff->SetProperty(pIOPropMagicCookieType, propTypeUInt32, &fourCC, 1);
-        }
+    // Initialize the codec context
+    AVCodecContext* codecContext = avcodec_alloc_context3(codec);
+    if (!codecContext) {
+        std::cerr << "Failed to allocate codec context" << std::endl;
+        return errFail;
     }
 
-    uint32_t temporal = 2;
-    p_pBuff->SetProperty(pIOPropTemporalReordering, propTypeUInt32, &temporal, 1);
+    // Set codec parameters (e.g., width, height, bitrate, etc.)
+    codecContext->width = m_CommonProps.GetWidth();
+    codecContext->height = m_CommonProps.GetHeight();
+    codecContext->bit_rate = 5000000;
+    codecContext->codec_id = AV_CODEC_ID_PRORES;
+    codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
+    codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
+    codecContext->time_base = {
+        static_cast<int>(m_CommonProps.GetFrameRateNum()), 
+        static_cast<int>(m_CommonProps.GetFrameRateDen())
+        };
 
-    if (isMultiPass)
-    {
-        SetupContext(false /* isFinalPass */);
-        if (m_Error != errNone)
-        {
-            return m_Error;
-        }
+   
+    if (avcodec_open2(codecContext, codec, nullptr) < 0) {
+        std::cerr << "Could not open codec" << std::endl;
+        return errFail;
     }
 
+    
     return errNone;
 }
 
@@ -715,23 +588,12 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
     {
         return m_Error;
     }
-
-    const int numDelayedFrames = x264_encoder_delayed_frames(m_pContext);
-    if (((p_pBuff == NULL) || !p_pBuff->IsValid()) && (numDelayedFrames == 0))
-    {
-        return errMoreData;
-    }
-
-    x264_picture_t outPic;
-    x264_picture_init(&outPic);
-    x264_nal_t* pNals = 0;
-    int numNals = 0;
-    int bytes = 0;
-    int64_t pts = -1;
+  
     if ((p_pBuff == NULL) || !p_pBuff->IsValid())
     {
         // flushing
-        bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, 0, &outPic);
+       
+        //bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, 0, &outPic);
     }
     else
     {
@@ -739,81 +601,62 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         size_t bufSize = 0;
         if (!p_pBuff->LockBuffer(&pBuf, &bufSize))
         {
-            g_Log(logLevelError, "X264 Plugin :: Failed to lock the buffer");
+            g_Log(logLevelError, "prores Plugin :: Failed to lock the buffer");
             return errFail;
         }
 
         if (pBuf == NULL || bufSize == 0)
         {
-            g_Log(logLevelError, "X264 Plugin :: No data to encode");
+            g_Log(logLevelError, "prores Plugin :: No data to encode");
             p_pBuff->UnlockBuffer();
             return errUnsupported;
         }
 
         uint32_t width = 0;
         uint32_t height = 0;
-        if (!p_pBuff->GetUINT32(pIOPropWidth, width) || !p_pBuff->GetUINT32(pIOPropHeight, height))
-        {
-            g_Log(logLevelError, "X264 Plugin :: Width/Height not set when encoding the frame");
-            return errNoParam;
-        }
-
+        int64_t pts = 0;
         if (!p_pBuff->GetINT64(pIOPropPTS, pts))
         {
-            g_Log(logLevelError, "X264 Plugin :: PTS not set when encoding the frame");
+            g_Log(logLevelError, "prores Plugin :: PTS not set when encoding the frame");
             return errNoParam;
         }
 
-        x264_picture_t inPic;
-        x264_picture_init(&inPic);
-        inPic.i_pts = pts;
-        inPic.img.plane[1] = 0;
-        inPic.img.plane[2] = 0;
-        inPic.img.plane[3] = 0;
-        inPic.img.i_csp = m_ColorModel;
-        if (m_ColorModel == X264_CSP_UYVY)
-        {
-            inPic.img.i_plane = 1;
-            inPic.img.i_stride[0] = width * 2;
-            inPic.img.plane[0] = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
-            bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
-            p_pBuff->UnlockBuffer();
-        }
-        else
-        {
-            // repack
-            std::vector<uint8_t> yPlane;
-            yPlane.reserve(width * height);
-            std::vector<uint8_t> uvPlane;
-            uvPlane.reserve(width * height / 2);
-            const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+        
 
-            for (int h = 0; h < height; ++h)
+        // repack
+        std::vector<uint8_t> yPlane;
+        yPlane.reserve(width * height);
+        std::vector<uint8_t> uvPlane;
+        uvPlane.reserve(width * height / 2);
+        const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+
+        for (int h = 0; h < height; ++h)
+        {
+            for (int w = 0; w < width; w += 2)
             {
-                for (int w = 0; w < width; w += 2)
+                yPlane.push_back(pSrc[1]);
+                yPlane.push_back(pSrc[3]);
+                if ((h % 2) == 0)
                 {
-                    yPlane.push_back(pSrc[1]);
-                    yPlane.push_back(pSrc[3]);
-                    if ((h % 2) == 0)
-                    {
-                        uvPlane.push_back(pSrc[0]);
-                        uvPlane.push_back(pSrc[2]);
-                    }
-
-                    pSrc += 4;
+                    uvPlane.push_back(pSrc[0]);
+                    uvPlane.push_back(pSrc[2]);
                 }
+
+                pSrc += 4;
             }
-
-            p_pBuff->UnlockBuffer();
-
-            inPic.img.i_plane = 2;
-            inPic.img.i_stride[0] = width;
-            inPic.img.plane[0] = yPlane.data();
-            inPic.img.i_stride[1] = width;
-            inPic.img.plane[1] = uvPlane.data();
-            bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
         }
+
+        p_pBuff->UnlockBuffer();
+
+        // inPic.img.i_plane = 2;
+        // inPic.img.i_stride[0] = width;
+        // inPic.img.plane[0] = yPlane.data();
+        // inPic.img.i_stride[1] = width;
+        // inPic.img.plane[1] = uvPlane.data();
+        // bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
     }
+
+    int bytes = 0;
 
     if (bytes < 0)
     {
@@ -823,7 +666,7 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
     {
         return errMoreData;
     }
-    else if (m_IsMultiPass && (m_PassesDone == 0))
+    else
     {
         return errNone;
     }
@@ -844,16 +687,16 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
 
     assert(outBufSize == bytes);
 
-    memcpy(pOutBuf, pNals[0].p_payload, bytes);
+    // memcpy(pOutBuf, pNals[0].p_payload, bytes);
 
-    int64_t ts = outPic.i_pts;
-    outBuf.SetProperty(pIOPropPTS, propTypeInt64, &ts, 1);
+    // int64_t ts = outPic.i_pts;
+    // outBuf.SetProperty(pIOPropPTS, propTypeInt64, &ts, 1);
 
-    ts = outPic.i_dts;
-    outBuf.SetProperty(pIOPropDTS, propTypeInt64, &ts, 1);
+    // ts = outPic.i_dts;
+    // outBuf.SetProperty(pIOPropDTS, propTypeInt64, &ts, 1);
 
-    uint8_t isKeyFrame = IS_X264_TYPE_I(outPic.i_type) ? 1 : 0;
-    outBuf.SetProperty(pIOPropIsKeyFrame, propTypeUInt8, &isKeyFrame, 1);
+    // uint8_t isKeyFrame = IS_X264_TYPE_I(outPic.i_type) ? 1 : 0;
+    // outBuf.SetProperty(pIOPropIsKeyFrame, propTypeUInt8, &isKeyFrame, 1);
 
     return m_pCallback->SendOutput(&outBuf);
 }

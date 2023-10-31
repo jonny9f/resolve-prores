@@ -8,7 +8,6 @@ extern "C" {
 #include <opencv2/opencv.hpp>
 
 
-
 int main() {
     av_register_all();
 
@@ -137,8 +136,7 @@ int main() {
             
 
       uint16_t* row16bit = image10bit.ptr<uint16_t>(y);
-      BitStreamWriter bitstream((uint8_t*)row, frame->linesize[0] / 2);
-      
+
       for (int x = 0; x < width; x += 2) {
 
         // extract RGB
