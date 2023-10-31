@@ -2,7 +2,7 @@
 
 #include <assert.h>
 
-#include "x264_encoder.h"
+#include "prores_encoder.h"
 
 using namespace IOPlugin;
 

@@ -26,9 +26,9 @@ StatusCode g_HandleGetInfo(HostPropertyCollectionRef* p_pProps)
 
 StatusCode g_HandleCreateObj(unsigned char* p_pUUID, ObjectRef* p_ppObj)
 {
-    if (memcmp(p_pUUID, X264Encoder::s_UUID, 16) == 0)
+    if (memcmp(p_pUUID, ProResEncoder::s_UUID, 16) == 0)
     {
-        *p_ppObj = new X264Encoder();
+        *p_ppObj = new ProResEncoder();
         return errNone;
     }
     else if (memcmp(p_pUUID, DummyContainer::s_UUID, 16) == 0)
@@ -58,7 +58,7 @@ StatusCode g_HandlePluginTerminate()
 
 StatusCode g_ListCodecs(HostListRef* p_pList)
 {
-    StatusCode err = X264Encoder::s_RegisterCodecs(p_pList);
+    StatusCode err = ProResEncoder::s_RegisterCodecs(p_pList);
     if (err != errNone)
     {
         return err;
@@ -83,9 +83,9 @@ StatusCode g_ListContainers(HostListRef* p_pList)
 
 StatusCode g_GetEncoderSettings(unsigned char* p_pUUID, HostPropertyCollectionRef* p_pValues, HostListRef* p_pSettingsList)
 {
-    if (memcmp(p_pUUID, X264Encoder::s_UUID, 16) == 0)
+    if (memcmp(p_pUUID, ProResEncoder::s_UUID, 16) == 0)
     {
-        return X264Encoder::s_GetEncoderSettings(p_pValues, p_pSettingsList);
+        return ProResEncoder::s_GetEncoderSettings(p_pValues, p_pSettingsList);
     }
     else if (memcmp(p_pUUID, AudioEncoder::s_UUID, 16) == 0)
     {

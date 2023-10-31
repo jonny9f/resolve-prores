@@ -14,7 +14,7 @@ else
 LDFLAGS = -dynamiclib
 endif
 
-TARGET = $(BINDIR)/x264_encoder_plugin.dvcp
+TARGET = $(BINDIR)/prores_encoder_plugin.dvcp
 
 LDFLAGS += -L$(X264_DIR)/lib -lx264 -lz 
 
@@ -23,8 +23,8 @@ BINDIR = $(BUILD_DIR)/bin
 
 .PHONY: all
 
-HEADERS = plugin.h x264_encoder.h audio_encoder.h
-SRCS = plugin.cpp x264_encoder.cpp dummy_container.cpp audio_encoder.cpp
+HEADERS = plugin.h prores_encoder.h audio_encoder.h
+SRCS = plugin.cpp prores_encoder.cpp dummy_container.cpp audio_encoder.cpp
 OBJS = $(SRCS:%.cpp=$(OBJDIR)/%.o)
 
 all: prereq make-subdirs $(HEADERS) $(SRCS) $(OBJS) $(TARGET)
@@ -54,3 +54,9 @@ clean-subdirs:
 	echo "Making clean in $$subdir"; \
 	(cd $$subdir; make clean; cd ..) \
 	done
+
+# install: $(TARGET)
+install: all
+	mkdir -p $(BINDIR)/prores_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
+	cp $(TARGET) $(BINDIR)/prores_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
+

@@ -11,14 +11,14 @@ struct x264_t;
 struct x264_param_t;
 class UISettingsController;
 
-class X264Encoder : public IPluginCodecRef
+class ProResEncoder : public IPluginCodecRef
 {
 public:
     static const uint8_t s_UUID[];
 
 public:
-    X264Encoder();
-    ~X264Encoder();
+    ProResEncoder();
+    ~ProResEncoder();
 
     static StatusCode s_RegisterCodecs(HostListRef* p_pList);
     static StatusCode s_GetEncoderSettings(HostPropertyCollectionRef* p_pValues, HostListRef* p_pSettingsList);

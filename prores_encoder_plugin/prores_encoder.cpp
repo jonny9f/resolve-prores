@@ -1,4 +1,4 @@
-#include "x264_encoder.h"
+#include "prores_encoder.h"
 
 #include <assert.h>
 #include <cstring>
@@ -10,7 +10,8 @@
 #include "x264.h"
 
 // NOTE: When creating a plugin for release, please generate a new Codec UUID in order to prevent conflicts with other third-party plugins.
-const uint8_t X264Encoder::s_UUID[] = { 0x6a, 0x88, 0xe8, 0x41, 0xd8, 0xe4, 0x41, 0x4b, 0x87, 0x9e, 0xa4, 0x80, 0xfc, 0x90, 0xda, 0xb4 };
+const uint8_t ProResEncoder::s_UUID[] = { 0x6a, 0x88, 0xe8, 0x41, 0xd8, 0xe4, 0x41, 0x4b, 0x87, 0x9e, 0xa4, 0x80, 0xfc, 0x90, 0xda, 0xb4 };
+
 
 static std::string s_TmpFileName = "/tmp/x264_multipass.log";
 
@@ -380,7 +381,7 @@ private:
     int32_t m_BitRate;
 };
 
-StatusCode X264Encoder::s_GetEncoderSettings(HostPropertyCollectionRef* p_pValues, HostListRef* p_pSettingsList)
+StatusCode ProResEncoder::s_GetEncoderSettings(HostPropertyCollectionRef* p_pValues, HostListRef* p_pSettingsList)
 {
     HostCodecConfigCommon commonProps;
     commonProps.Load(p_pValues);
@@ -391,7 +392,7 @@ StatusCode X264Encoder::s_GetEncoderSettings(HostPropertyCollectionRef* p_pValue
     return settings.Render(p_pSettingsList);
 }
 
-StatusCode X264Encoder::s_RegisterCodecs(HostListRef* p_pList)
+StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
 {
     // add x264 encoder
     HostPropertyCollectionRef codecInfo;
@@ -400,15 +401,15 @@ StatusCode X264Encoder::s_RegisterCodecs(HostListRef* p_pList)
         return errAlloc;
     }
 
-    codecInfo.SetProperty(pIOPropUUID, propTypeUInt8, X264Encoder::s_UUID, 16);
+    codecInfo.SetProperty(pIOPropUUID, propTypeUInt8, ProResEncoder::s_UUID, 16);
 
-    const char* pCodecName = "x264 Plugin";
+    const char* pCodecName = "ProRes Plugin";
     codecInfo.SetProperty(pIOPropName, propTypeString, pCodecName, strlen(pCodecName));
 
-    const char* pCodecGroup = "Plugin AVC";
+    const char* pCodecGroup = "ProRes";
     codecInfo.SetProperty(pIOPropGroup, propTypeString, pCodecGroup, strlen(pCodecGroup));
 
-    uint32_t val = 'avc1';
+    uint32_t val = 'apcn';
     codecInfo.SetProperty(pIOPropFourCC, propTypeUInt32, &val, 1);
 
     val = mediaVideo;
@@ -468,7 +469,7 @@ StatusCode X264Encoder::s_RegisterCodecs(HostListRef* p_pList)
     return errNone;
 }
 
-X264Encoder::X264Encoder()
+ProResEncoder::ProResEncoder()
     : m_pContext(0)
     , m_ColorModel(-1)
     , m_IsMultiPass(false)
@@ -477,7 +478,7 @@ X264Encoder::X264Encoder()
 {
 }
 
-X264Encoder::~X264Encoder()
+ProResEncoder::~ProResEncoder()
 {
     if (m_pContext)
     {
@@ -486,7 +487,7 @@ X264Encoder::~X264Encoder()
     }
 }
 
-void X264Encoder::DoFlush()
+void ProResEncoder::DoFlush()
 {
     if (m_Error != errNone)
     {
@@ -514,7 +515,7 @@ void X264Encoder::DoFlush()
     }
 }
 
-StatusCode X264Encoder::DoInit(HostPropertyCollectionRef* p_pProps)
+StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
 {
     // fill average frame size if have byte rate
     uint32_t val = clrUYVY;
@@ -528,7 +529,7 @@ StatusCode X264Encoder::DoInit(HostPropertyCollectionRef* p_pProps)
     return errNone;
 }
 
-void X264Encoder::SetupContext(bool p_IsFinalPass)
+void ProResEncoder::SetupContext(bool p_IsFinalPass)
 {
     if (m_pContext)
     {
@@ -613,7 +614,7 @@ void X264Encoder::SetupContext(bool p_IsFinalPass)
     m_Error = ((m_pContext != NULL) ? errNone : errFail);
 }
 
-StatusCode X264Encoder::DoOpen(HostBufferRef* p_pBuff)
+StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
 {
     assert(m_pContext == NULL);
 
@@ -697,7 +698,7 @@ StatusCode X264Encoder::DoOpen(HostBufferRef* p_pBuff)
     return errNone;
 }
 
-StatusCode X264Encoder::DoProcess(HostBufferRef* p_pBuff)
+StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
 {
     if (m_Error != errNone)
     {
