@@ -28,13 +28,6 @@ int main() {
         return -1;
     }
 
-    // Create a new AVStream for the video
-    AVStream* outStream = avformat_new_stream(outFormatContext, codec);
-    if (!outStream) {
-        std::cerr << "Failed to create new stream" << std::endl;
-        return -1;
-    }
-
     // Initialize the codec context
     AVCodecContext* codecContext = avcodec_alloc_context3(codec);
     if (!codecContext) {
@@ -49,14 +42,22 @@ int main() {
     codecContext->codec_id = AV_CODEC_ID_PRORES;
     codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
     codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
-    
-
-    codecContext->time_base = {1, 30};
+    codecContext->time_base.num = 1;
+    codecContext->time_base.den = 25;
+  
 
     if (avcodec_open2(codecContext, codec, nullptr) < 0) {
         std::cerr << "Could not open codec" << std::endl;
         return -1;
     }
+
+        // Create a new AVStream for the video
+    AVStream* outStream = avformat_new_stream(outFormatContext, codec);
+    if (!outStream) {
+        std::cerr << "Failed to create new stream" << std::endl;
+        return -1;
+    }
+
 
     outStream->codecpar->codec_tag = 0;
     avcodec_parameters_from_context(outStream->codecpar, codecContext);
@@ -66,6 +67,8 @@ int main() {
         std::cerr << "Could not open output file" << std::endl;
         return -1;
     }
+    outStream->time_base.den = 25;
+    outStream->time_base.num = 1;
 
     // Write the file header
     if (avformat_write_header(outFormatContext, nullptr) < 0) {
@@ -173,6 +176,10 @@ int main() {
     // Encode a few frames here (you can replace this with your own frame data)
     for (int i = 0; i < 10; i++) {
 
+
+      frame->pts = i * 25;
+
+   
       // Encode the frame
       int ret = avcodec_send_frame(codecContext, frame);
       if (ret < 0) {

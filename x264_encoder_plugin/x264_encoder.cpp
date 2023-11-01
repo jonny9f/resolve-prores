@@ -441,8 +441,8 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     const uint8_t fieldSupport = (fieldProgressive | fieldTop | fieldBottom);
     codecInfo.SetProperty(pIOPropFieldOrder, propTypeUInt8, &fieldSupport, 1);
 
-    uint8_t val8 = 0;
-    codecInfo.SetProperty(pIOPropThreadSafe, propTypeUInt8, &val8, 1 );
+    // uint8_t val8 = 0;
+    // codecInfo.SetProperty(pIOPropThreadSafe, propTypeUInt8, &val8, 1 );
 
     // fill supported containers, would one need the plugin container to handle the encoding internally,
     // just create a dummy passthrough codec which will pass the buffer for output unchanged
@@ -557,9 +557,13 @@ void ProResEncoder::OpenAV()
     avcodec_register_all();
 
 
+    int width = m_CommonProps.GetWidth();
+    int height = m_CommonProps.GetHeight();
+    std::string filename( "/tmp/test.mov" );
+
     // Create a new AVFormatContext to represent the output format
     m_outFormatContext = nullptr;
-    if (avformat_alloc_output_context2(&m_outFormatContext, nullptr, "mov", "/tmp/output.mov") < 0) {
+    if (avformat_alloc_output_context2(&m_outFormatContext, nullptr, "mov", filename.c_str()) < 0) {
         g_Log(logLevelError, "Could not create output context" );
         return ;
     }
@@ -571,14 +575,6 @@ void ProResEncoder::OpenAV()
         return;
     }
 
-
-    // Create a new AVStream for the video
-    m_outStream = avformat_new_stream(m_outFormatContext, m_codec);
-    if (!m_outStream) {
-         g_Log(logLevelError,"Failed to create new stream");
-        return;
-    }
-
     // Initialize the codec context
     m_codecContext = avcodec_alloc_context3(m_codec);
     if (!m_codecContext) {
@@ -587,9 +583,6 @@ void ProResEncoder::OpenAV()
     }
 
     
-    int width = m_CommonProps.GetWidth();
-    int height = m_CommonProps.GetHeight();
-
     g_Log(logLevelInfo, "image %dx%d", width, height);
 
     // Set codec parameters (e.g., width, height, bitrate, etc.)
@@ -599,23 +592,31 @@ void ProResEncoder::OpenAV()
     m_codecContext->codec_id = AV_CODEC_ID_PRORES;
     m_codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
     m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
-    m_codecContext->time_base = {
-        static_cast<int>(1), 
-        static_cast<int>(30)
-        };
+    m_codecContext->thread_count = 16;
 
-   
-   
+    // set fps to 30
+    m_codecContext->time_base = (AVRational){1, 30};
+  
+     // Create a new AVStream for the video
+    m_outStream = avformat_new_stream(m_outFormatContext, m_codec);
+    if (!m_outStream) {
+         g_Log(logLevelError,"Failed to create new stream");
+        return;
+    }    
+
+    m_outStream->codecpar->codec_tag = 0;
+    avcodec_parameters_from_context(m_outStream->codecpar, m_codecContext);
+
+
     if (avcodec_open2(m_codecContext, m_codec, nullptr) < 0) {
         g_Log(logLevelError, "Could not open codec");
         return;
     }
 
-    m_outStream->codecpar->codec_tag = 0;
-    avcodec_parameters_from_context(m_outStream->codecpar, m_codecContext);
 
+ 
         // Open the output file
-    if (avio_open(&m_outFormatContext->pb, "/tmp/output.mov", AVIO_FLAG_WRITE) < 0) {
+    if (avio_open(&m_outFormatContext->pb, filename.c_str(), AVIO_FLAG_WRITE) < 0) {
          g_Log(logLevelError, "Could not open output file" );
         return ;
     }
@@ -901,39 +902,41 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         else
         {
             // repack
-            std::vector<uint8_t> yPlane;
-            yPlane.reserve(width * height);
-            std::vector<uint8_t> uvPlane;
-            uvPlane.reserve(width * height / 2);
-            const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+            // std::vector<uint8_t> yPlane;
+            // yPlane.reserve(width * height);
+            // std::vector<uint8_t> uvPlane;
+            // uvPlane.reserve(width * height / 2);
+            // const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
 
-            for (int h = 0; h < height; ++h)
-            {
-                for (int w = 0; w < width; w += 2)
-                {
-                    yPlane.push_back(pSrc[1]);
-                    yPlane.push_back(pSrc[3]);
-                    if ((h % 2) == 0)
-                    {
-                        uvPlane.push_back(pSrc[0]);
-                        uvPlane.push_back(pSrc[2]);
-                    }
+            // for (int h = 0; h < height; ++h)
+            // {
+            //     for (int w = 0; w < width; w += 2)
+            //     {
+            //         yPlane.push_back(pSrc[1]);
+            //         yPlane.push_back(pSrc[3]);
+            //         if ((h % 2) == 0)
+            //         {
+            //             uvPlane.push_back(pSrc[0]);
+            //             uvPlane.push_back(pSrc[2]);
+            //         }
 
-                    pSrc += 4;
-                }
-            }
+            //         pSrc += 4;
+            //     }
+            // }
 
-            p_pBuff->UnlockBuffer();
+            // p_pBuff->UnlockBuffer();
 
-            inPic.img.i_plane = 2;
-            inPic.img.i_stride[0] = width;
-            inPic.img.plane[0] = yPlane.data();
-            inPic.img.i_stride[1] = width;
-            inPic.img.plane[1] = uvPlane.data();
-            bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
+            // inPic.img.i_plane = 2;
+            // inPic.img.i_stride[0] = width;
+            // inPic.img.plane[0] = yPlane.data();
+            // inPic.img.i_stride[1] = width;
+            // inPic.img.plane[1] = uvPlane.data();
+            // bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
 
 
             // add FFMPEG repack
+            const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+
             // Initialize a packet for holding the encoded data
             AVPacket packet;
             av_init_packet(&packet);
@@ -951,7 +954,6 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
             frame->format = AV_PIX_FMT_YUV422P10;
             frame->width =  m_codecContext->width;
             frame->height =  m_codecContext->height;
-            frame->pts = pts;
 
               // Allocate memory for the frame data
             if (av_frame_get_buffer(frame, 0) < 0) {

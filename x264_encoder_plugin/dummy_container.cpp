@@ -51,7 +51,7 @@ StatusCode DummyContainer::s_Register(HostListRef* p_pList)
     containerInfo.SetProperty(pIOPropMediaType, propTypeUInt32, &mediaType, 1);
 
     // set extension, otherwise default will be used. It is required even for folder path
-    containerInfo.SetProperty(pIOPropContainerExt, propTypeString, "mxf", 3);
+    containerInfo.SetProperty(pIOPropContainerExt, propTypeString, "mov", 3);
 
     if (!p_pList->Append(&containerInfo))
     {
