@@ -6,7 +6,7 @@ X264_DIR = /home/jon/dev/resolve/build/
 BUILD_DIR = .
 SUBDIRS = wrapper
 
-CFLAGS += -I$(X264_DIR)/include
+CFLAGS += -I$(X264_DIR)/include -g -fPIC -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-parameter -Wno-unused-result -Wno-unused-result 
 
 ifeq ($(OS_TYPE), Linux)
 LDFLAGS = -shared '-Wl,-rpath,$$ORIGIN' -Wl,-z,origin -lpthread  
@@ -16,7 +16,7 @@ endif
 
 TARGET = $(BINDIR)/x264_encoder_plugin.dvcp
 
-LDFLAGS += -L$(X264_DIR)/lib -lx264 -lz 
+LDFLAGS += -L$(X264_DIR)/lib -lx264 -lz -lavformat -lavcodec -lavutil
 
 OBJDIR = $(BUILD_DIR)/build
 BINDIR = $(BUILD_DIR)/bin
@@ -54,3 +54,10 @@ clean-subdirs:
 	echo "Making clean in $$subdir"; \
 	(cd $$subdir; make clean; cd ..) \
 	done
+
+
+# install: $(TARGET)
+install: all
+	mkdir -p $(BINDIR)/x264_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
+	cp $(TARGET) $(BINDIR)/x264_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
+

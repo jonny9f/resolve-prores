@@ -405,7 +405,7 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     const char* pCodecName = "x264 Plugin";
     codecInfo.SetProperty(pIOPropName, propTypeString, pCodecName, strlen(pCodecName));
 
-    const char* pCodecGroup = "Plugin AVC";
+    const char* pCodecGroup = "Plugin XXX";
     codecInfo.SetProperty(pIOPropGroup, propTypeString, pCodecGroup, strlen(pCodecGroup));
 
     uint32_t val = 'avc1';
@@ -441,6 +441,9 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     const uint8_t fieldSupport = (fieldProgressive | fieldTop | fieldBottom);
     codecInfo.SetProperty(pIOPropFieldOrder, propTypeUInt8, &fieldSupport, 1);
 
+    uint8_t val8 = 0;
+    codecInfo.SetProperty(pIOPropThreadSafe, propTypeUInt8, &val8, 1 );
+
     // fill supported containers, would one need the plugin container to handle the encoding internally,
     // just create a dummy passthrough codec which will pass the buffer for output unchanged
     // but if nothing extraordinary is required let Resolve trigger the codec encode function and pass the output buffer to the writer
@@ -469,17 +472,27 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
 }
 
 ProResEncoder::ProResEncoder()
-    : m_pContext(0)
+    : m_outFormatContext(0)
+    , m_codec(0)
+    , m_outStream(0)
+    , m_codecContext(0)
+    , m_frame(0)
+    , m_packet(0)
+    , m_pContext(0)
     , m_ColorModel(-1)
     , m_IsMultiPass(false)
     , m_PassesDone(0)
     , m_Error(errNone)
 {
+
+
 }
 
 ProResEncoder::~ProResEncoder()
 {
-    if (m_pContext)
+    g_Log(logLevelError, "X264 Plugin :: Destructor");
+    CloseAV();
+        if (m_pContext)
     {
         x264_encoder_close(m_pContext);
         m_pContext = 0;
@@ -487,7 +500,14 @@ ProResEncoder::~ProResEncoder()
 }
 
 void ProResEncoder::DoFlush()
+    
 {
+  g_Log(logLevelInfo, "X264 Plugin :: DoFlush");
+
+  CloseAV();
+
+
+
     if (m_Error != errNone)
     {
         return;
@@ -517,6 +537,7 @@ void ProResEncoder::DoFlush()
 StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
 {
     // fill average frame size if have byte rate
+    g_Log(logLevelInfo, "X264 Plugin :: DoInit");
     uint32_t val = clrUYVY;
     p_pProps->SetProperty(pIOPropColorModel, propTypeUInt32, &val, 1);
 
@@ -527,9 +548,105 @@ StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
 
     return errNone;
 }
+void ProResEncoder::OpenAV()
+{ 
+    g_Log(logLevelInfo, "OpenAV");
+    av_register_all();
+
+    // Initialize FFmpeg codecs and formats
+    avcodec_register_all();
+
+
+    // Create a new AVFormatContext to represent the output format
+    m_outFormatContext = nullptr;
+    if (avformat_alloc_output_context2(&m_outFormatContext, nullptr, "mov", "/tmp/output.mov") < 0) {
+        g_Log(logLevelError, "Could not create output context" );
+        return ;
+    }
+
+    // Find the ProRes codec
+    m_codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
+    if (!m_codec) {
+         g_Log(logLevelError,"ProRes codec not found" );
+        return;
+    }
+
+
+    // Create a new AVStream for the video
+    m_outStream = avformat_new_stream(m_outFormatContext, m_codec);
+    if (!m_outStream) {
+         g_Log(logLevelError,"Failed to create new stream");
+        return;
+    }
+
+    // Initialize the codec context
+    m_codecContext = avcodec_alloc_context3(m_codec);
+    if (!m_codecContext) {
+         g_Log(logLevelError, "Failed to allocate codec context");
+        return;
+    }
+
+    
+    int width = m_CommonProps.GetWidth();
+    int height = m_CommonProps.GetHeight();
+
+    g_Log(logLevelInfo, "image %dx%d", width, height);
+
+    // Set codec parameters (e.g., width, height, bitrate, etc.)
+    m_codecContext->width = width;
+    m_codecContext->height = height;
+    m_codecContext->bit_rate = 5000000;
+    m_codecContext->codec_id = AV_CODEC_ID_PRORES;
+    m_codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
+    m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
+    m_codecContext->time_base = {
+        static_cast<int>(1), 
+        static_cast<int>(30)
+        };
+
+   
+   
+    if (avcodec_open2(m_codecContext, m_codec, nullptr) < 0) {
+        g_Log(logLevelError, "Could not open codec");
+        return;
+    }
+
+    m_outStream->codecpar->codec_tag = 0;
+    avcodec_parameters_from_context(m_outStream->codecpar, m_codecContext);
+
+        // Open the output file
+    if (avio_open(&m_outFormatContext->pb, "/tmp/output.mov", AVIO_FLAG_WRITE) < 0) {
+         g_Log(logLevelError, "Could not open output file" );
+        return ;
+    }
+
+    // Write the file header
+    if (avformat_write_header(m_outFormatContext, nullptr) < 0) {
+         g_Log(logLevelError,  "Error writing file header" );
+        return;
+    }
+
+
+    g_Log(logLevelInfo, "OpenAV complete");
+
+}
+
+void ProResEncoder::CloseAV()
+{
+    // Clean up and close the output file
+    if ( m_outFormatContext ) {
+      g_Log(logLevelInfo, "X264 Plugin :: CloseAV" );
+
+      av_write_trailer(m_outFormatContext);
+      avcodec_free_context(&m_codecContext);
+      avio_close(m_outFormatContext->pb);
+      m_outFormatContext = 0;
+    }
+}
 
 void ProResEncoder::SetupContext(bool p_IsFinalPass)
 {
+    g_Log(logLevelInfo, "X264 Plugin :: SetupContext %d", (int)p_IsFinalPass);
     if (m_pContext)
     {
         x264_encoder_close(m_pContext);
@@ -540,6 +657,7 @@ void ProResEncoder::SetupContext(bool p_IsFinalPass)
 
     const char* pProfile = m_pSettings->GetProfile();
     m_ColorModel = (((pProfile != NULL) && (strcmp(pProfile, "high422") == 0)) ? X264_CSP_UYVY : X264_CSP_NV12);
+
 
     x264_param_default_preset(&param, m_pSettings->GetEncPreset(), m_pSettings->GetTune());
     param.i_csp              = m_ColorModel;
@@ -611,13 +729,20 @@ void ProResEncoder::SetupContext(bool p_IsFinalPass)
 
     m_pContext = x264_encoder_open(&param);
     m_Error = ((m_pContext != NULL) ? errNone : errFail);
+
+
+
+
 }
 
 StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
 {
+    g_Log(logLevelInfo, "X264 Plugin :: DoOpen");
     assert(m_pContext == NULL);
 
     m_CommonProps.Load(p_pBuff);
+
+    OpenAV();
 
     const std::string& path = m_CommonProps.GetPath();
     if (!path.empty())
@@ -699,6 +824,7 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
 
 StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
 {
+    //g_Log(logLevelInfo, "X264 Plugin :: DoProcess");
     if (m_Error != errNone)
     {
         return m_Error;
@@ -719,7 +845,9 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
     if ((p_pBuff == NULL) || !p_pBuff->IsValid())
     {
         // flushing
+        g_Log(logLevelError, "X264 Plugin :: FLUSHING");
         bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, 0, &outPic);
+        CloseAV();
     }
     else
     {
@@ -751,6 +879,9 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
             g_Log(logLevelError, "X264 Plugin :: PTS not set when encoding the frame");
             return errNoParam;
         }
+
+        g_Log(logLevelInfo, "X264 Plugin :: PTS %ld", pts );
+
 
         x264_picture_t inPic;
         x264_picture_init(&inPic);
@@ -800,6 +931,74 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
             inPic.img.i_stride[1] = width;
             inPic.img.plane[1] = uvPlane.data();
             bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
+
+
+            // add FFMPEG repack
+            // Initialize a packet for holding the encoded data
+            AVPacket packet;
+            av_init_packet(&packet);
+            packet.data = nullptr;
+            packet.size = 0;
+
+            // Create a frame for encoding
+            AVFrame* frame = av_frame_alloc();
+            if (!frame) {
+                g_Log(logLevelError, "Could not allocate frame" );
+              return errFail;
+            }
+
+              // Initialize the frame parameters
+            frame->format = AV_PIX_FMT_YUV422P10;
+            frame->width =  m_codecContext->width;
+            frame->height =  m_codecContext->height;
+            frame->pts = pts;
+
+              // Allocate memory for the frame data
+            if (av_frame_get_buffer(frame, 0) < 0) {
+              g_Log(logLevelError, "Could not allocate frame data" );
+                return errFail;
+            }
+
+            pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+
+
+            for (int y = 0; y < height; ++y)
+            {
+                uint16_t* row = (uint16_t*)(frame->data[0] + y * frame->linesize[0]);
+                uint16_t* rowU = (uint16_t*)(frame->data[1] + y * frame->linesize[1]);
+                uint16_t* rowV = (uint16_t*)(frame->data[2] + y * frame->linesize[2]);
+
+                for (int x = 0; x < width; x += 2)
+                {
+                    // scale 8 bit to 10 bit
+                    row[x] = pSrc[1] << 2;
+                    row[x + 1] = pSrc[3] << 2;
+                    rowU[x/2] = pSrc[0] << 2;
+                    rowV[x/2] = pSrc[2] << 2;
+                    pSrc += 4;
+                }
+            }
+                  // Encode the frame
+            int ret = avcodec_send_frame(m_codecContext, frame);
+            if (ret < 0) {
+              g_Log(logLevelError, "error sending");
+            }
+            while (ret >= 0) {
+                ret = avcodec_receive_packet(m_codecContext, &packet);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                  break;
+                } else if (ret < 0) {
+                  g_Log(logLevelError, "error encoding");
+                }
+
+                // Write the encoded data to the output file
+                if (av_write_frame(m_outFormatContext, &packet) < 0) {
+                  g_Log(logLevelError, "error writing");
+                }
+
+                av_packet_unref(&packet);
+              }
+            av_frame_free(&frame);
         }
     }
 

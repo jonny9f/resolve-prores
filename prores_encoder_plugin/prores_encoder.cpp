@@ -7,10 +7,12 @@
 #include <iostream>
 
 #include <algorithm>
-
+  
 
 enum { X264_RC_CQP, X264_RC_CRF, X264_RC_ABR };
-static const char * const prores_preset_names[] = { "proxy", "LT", "422", "422HQ", "4444", "4444HQ", 0 };
+
+static const char * const prores_preset_names[] = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo", 0 };
+
 
 static const char * const prores_tune_names[] = { "film", "animation", "grain", "stillimage", "psnr", "ssim", "fastdecode", "zerolatency", 0 };
 
@@ -182,14 +184,14 @@ private:
             item.MakeComboBox("Tune", textsVec, valuesVec, m_Tune);
             if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
             {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate tune UI entry");
+                g_Log(logLevelError, "prores Plugin :: Failed to populate tune UI entry");
                 return errFail;
             }
         }
 
         // Profile combobox
         {
-            HostUIConfigEntryRef item("x264_profile");
+            HostUIConfigEntryRef item("prores_profile");
 
             std::vector<std::string> textsVec;
             std::vector<int> valuesVec;
@@ -205,10 +207,10 @@ private:
             textsVec.push_back("High 422");
             valuesVec.push_back(4);
 
-            item.MakeComboBox("h264 Profile", textsVec, valuesVec, m_Profile);
+            item.MakeComboBox("prores Profile", textsVec, valuesVec, m_Profile);
             if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
             {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate profile UI entry");
+                g_Log(logLevelError, "prores Plugin :: Failed to populate profile UI entry");
                 return errFail;
             }
         }
@@ -316,10 +318,6 @@ private:
     }
 
 public:
-    int32_t GetNumPasses()
-    {
-        return m_NumPasses;
-    }
 
     const char* GetEncPreset() const
     {
@@ -356,7 +354,7 @@ public:
 
     int32_t GetQualityMode() const
     {
-        return (m_NumPasses == 2) ? X264_RC_ABR : m_QualityMode;
+        return m_QualityMode;
     }
 
     int32_t GetQP() const
@@ -412,7 +410,7 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     const char* pCodecName = "ProRes Plugin";
     codecInfo.SetProperty(pIOPropName, propTypeString, pCodecName, strlen(pCodecName));
 
-    const char* pCodecGroup = "ProRes";
+    const char* pCodecGroup = "ProResX";
     codecInfo.SetProperty(pIOPropGroup, propTypeString, pCodecGroup, strlen(pCodecGroup));
 
     uint32_t val = 'apcn';
@@ -426,6 +424,9 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
 
     val = clrUYVY;
     codecInfo.SetProperty(pIOPropColorModel, propTypeUInt32, &val, 1);
+    
+    // uint8_t val8 = 0;
+    // codecInfo.SetProperty(pIOPropThreadSafe, propTypeUInt8, &val8, 1 );
 
     // Optionally enable both Data Ranges, Video will be default for "Auto" thus "0" value goes first
     std::vector<uint8_t> dataRangeVec;
@@ -475,8 +476,13 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     return errNone;
 }
 
-ProResEncoder::ProResEncoder()
-    : m_pContext(0)
+ProResEncoder::ProResEncoder() :
+    m_outFormatContext(0)
+    , m_codec(0)
+    , m_outStream(0)
+    , m_codecContext(0)
+    , m_frame(0)
+    , m_packet(0)
     , m_ColorModel(-1)
     , m_Error(errNone)
 {
@@ -486,10 +492,10 @@ ProResEncoder::ProResEncoder()
 
 ProResEncoder::~ProResEncoder()
 {
-    if (m_pContext)
+    if (m_outFormatContext)
     {
-        avio_close(m_pContext->pb);
-        m_pContext = 0;
+        avio_close(m_outFormatContext->pb);
+        m_outFormatContext = 0;
     }
 }
 
@@ -499,12 +505,13 @@ void ProResEncoder::DoFlush()
     {
         return;
     }
+    // Clean up and close the output file
+    av_write_trailer(m_outFormatContext);
 
-    StatusCode sts = DoProcess(NULL);
-    while (sts == errNone)
-    {
-        sts = DoProcess(NULL);
-    }
+    av_frame_free(&m_frame);
+    avcodec_free_context(&m_codecContext);
+    avio_close(m_outFormatContext->pb);
+    m_outFormatContext = 0;
 
 }
 
@@ -524,7 +531,7 @@ StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
 
 StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
 {
-    assert(m_pContext == NULL);
+    assert(m_outFormatContext == NULL);
 
     m_CommonProps.Load(p_pBuff);
 
@@ -533,52 +540,86 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
     m_pSettings.reset(new UISettingsController(m_CommonProps));
     m_pSettings->Load(p_pBuff);
 
-  if (m_pContext)
+  if (m_outFormatContext)
     {
-        avio_close(m_pContext->pb);
-        m_pContext = 0;
+        avio_close(m_outFormatContext->pb);
+        m_outFormatContext = 0;
     }
 
     // Find the ProRes codec
-    AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
-    if (!codec) {
+    AVCodec* m_codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
+    if (!m_codec) {
         std::cerr << "ProRes codec not found" << std::endl;
         return errFail;
     }
 
     // Create a new AVStream for the video
-    AVStream* outStream = avformat_new_stream(m_pContext, codec);
-    if (!outStream) {
+    AVStream* m_outStream = avformat_new_stream(m_outFormatContext, m_codec);
+    if (!m_outStream) {
         std::cerr << "Failed to create new stream" << std::endl;
         return errFail;
     }
 
     // Initialize the codec context
-    AVCodecContext* codecContext = avcodec_alloc_context3(codec);
-    if (!codecContext) {
+    AVCodecContext* m_codecContext = avcodec_alloc_context3(m_codec);
+    if (!m_codecContext) {
         std::cerr << "Failed to allocate codec context" << std::endl;
         return errFail;
     }
 
     // Set codec parameters (e.g., width, height, bitrate, etc.)
-    codecContext->width = m_CommonProps.GetWidth();
-    codecContext->height = m_CommonProps.GetHeight();
-    codecContext->bit_rate = 5000000;
-    codecContext->codec_id = AV_CODEC_ID_PRORES;
-    codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
-    codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
-    codecContext->time_base = {
+    m_codecContext->width = m_CommonProps.GetWidth();
+    m_codecContext->height = m_CommonProps.GetHeight();
+    m_codecContext->bit_rate = 5000000;
+    m_codecContext->codec_id = AV_CODEC_ID_PRORES;
+    m_codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
+    m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
+    m_codecContext->time_base = {
         static_cast<int>(m_CommonProps.GetFrameRateNum()), 
         static_cast<int>(m_CommonProps.GetFrameRateDen())
         };
 
    
-    if (avcodec_open2(codecContext, codec, nullptr) < 0) {
+    if (avcodec_open2(m_codecContext, m_codec, nullptr) < 0) {
         std::cerr << "Could not open codec" << std::endl;
         return errFail;
     }
 
-    
+    m_outStream->codecpar->codec_tag = 0;
+    avcodec_parameters_from_context(m_outStream->codecpar, m_codecContext);
+
+        // Open the output file
+    if (avio_open(&m_outFormatContext->pb, "/tmp/output.mov", AVIO_FLAG_WRITE) < 0) {
+        std::cerr << "Could not open output file" << std::endl;
+        return errFail;
+    }
+
+    // Write the file header
+    if (avformat_write_header(m_outFormatContext, nullptr) < 0) {
+        std::cerr << "Error writing file header" << std::endl;
+        return errFail;
+    }
+
+
+    // Create a frame for encoding
+    AVFrame* m_frame = av_frame_alloc();
+    if (!m_frame) {
+        std::cerr << "Could not allocate frame" << std::endl;
+        return errFail;
+    }
+
+      // Initialize the frame parameters
+    m_frame->format = AV_PIX_FMT_YUV422P10;
+    m_frame->width =  m_codecContext->width;
+    m_frame->height =  m_codecContext->height;
+
+      // Allocate memory for the frame data
+    if (av_frame_get_buffer(m_frame, 0) < 0) {
+      std::cerr << "Could not allocate frame data" << std::endl;
+        return errFail;
+    }
+
+
     return errNone;
 }
 
@@ -594,83 +635,76 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         // flushing
        
         //bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, 0, &outPic);
-    }
-    else
-    {
-        char* pBuf = NULL;
-        size_t bufSize = 0;
-        if (!p_pBuff->LockBuffer(&pBuf, &bufSize))
-        {
-            g_Log(logLevelError, "prores Plugin :: Failed to lock the buffer");
-            return errFail;
-        }
-
-        if (pBuf == NULL || bufSize == 0)
-        {
-            g_Log(logLevelError, "prores Plugin :: No data to encode");
-            p_pBuff->UnlockBuffer();
-            return errUnsupported;
-        }
-
-        uint32_t width = 0;
-        uint32_t height = 0;
-        int64_t pts = 0;
-        if (!p_pBuff->GetINT64(pIOPropPTS, pts))
-        {
-            g_Log(logLevelError, "prores Plugin :: PTS not set when encoding the frame");
-            return errNoParam;
-        }
-
-        
-
-        // repack
-        std::vector<uint8_t> yPlane;
-        yPlane.reserve(width * height);
-        std::vector<uint8_t> uvPlane;
-        uvPlane.reserve(width * height / 2);
-        const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
-
-        for (int h = 0; h < height; ++h)
-        {
-            for (int w = 0; w < width; w += 2)
-            {
-                yPlane.push_back(pSrc[1]);
-                yPlane.push_back(pSrc[3]);
-                if ((h % 2) == 0)
-                {
-                    uvPlane.push_back(pSrc[0]);
-                    uvPlane.push_back(pSrc[2]);
-                }
-
-                pSrc += 4;
-            }
-        }
-
-        p_pBuff->UnlockBuffer();
-
-        // inPic.img.i_plane = 2;
-        // inPic.img.i_stride[0] = width;
-        // inPic.img.plane[0] = yPlane.data();
-        // inPic.img.i_stride[1] = width;
-        // inPic.img.plane[1] = uvPlane.data();
-        // bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
-    }
-
-    int bytes = 0;
-
-    if (bytes < 0)
-    {
+        std::cerr << "FLUSHING " << std::endl;
         return errFail;
     }
-    else if (bytes == 0)
+
+    char* pBuf = NULL;
+    size_t bufSize = 0;
+    if (!p_pBuff->LockBuffer(&pBuf, &bufSize))
     {
-        return errMoreData;
-    }
-    else
-    {
-        return errNone;
+        g_Log(logLevelError, "prores Plugin :: Failed to lock the buffer");
+        return errFail;
     }
 
+    if (pBuf == NULL || bufSize == 0)
+    {
+        g_Log(logLevelError, "prores Plugin :: No data to encode");
+        p_pBuff->UnlockBuffer();
+        return errUnsupported;
+    }
+
+    uint32_t width = 0;
+    uint32_t height = 0;
+    int64_t pts = 0;
+    if (!p_pBuff->GetUINT32(pIOPropWidth, width) || !p_pBuff->GetUINT32(pIOPropHeight, height))
+    {
+        g_Log(logLevelError, "prores Plugin :: Width/Height not set when encoding the frame");
+        return errNoParam;
+    }
+
+    if (!p_pBuff->GetINT64(pIOPropPTS, pts))
+    {
+        g_Log(logLevelError, "prores Plugin :: PTS not set when encoding the frame");
+        return errNoParam;
+    }
+    
+    // Initialize a packet for holding the encoded data
+    AVPacket packet;
+    av_init_packet(&packet);
+    packet.data = nullptr;
+    packet.size = 0;
+    
+    // Encode the frame
+    int ret = avcodec_send_frame(m_codecContext, m_frame);
+    if (ret < 0) {
+      std::cerr << "Error sending frame to codec" << std::endl;
+      return errFail;
+    }
+
+    while (ret >= 0) {
+      ret = avcodec_receive_packet(m_codecContext, &packet);
+      if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        break;
+      } else if (ret < 0) {
+        std::cerr << "Error encoding frame" << std::endl;
+        return errFail;
+      }
+
+      // Write the encoded data to the output file
+      if (av_write_frame(m_outFormatContext, &packet) < 0) {
+        std::cerr << "Error writing frame" << std::endl;
+        return errFail;
+      }
+
+      av_packet_unref(&packet);
+    }
+
+    p_pBuff->UnlockBuffer();
+        // fill the out buffer and info
+
+    int bytes = m_frame->pkt_size;
+        
     // fill the out buffer and info
     HostBufferRef outBuf(false);
     if (!outBuf.IsValid() || !outBuf.Resize(bytes))
@@ -687,7 +721,7 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
 
     assert(outBufSize == bytes);
 
-    // memcpy(pOutBuf, pNals[0].p_payload, bytes);
+    memcpy(pOutBuf, m_frame->buf, bytes);
 
     // int64_t ts = outPic.i_pts;
     // outBuf.SetProperty(pIOPropPTS, propTypeInt64, &ts, 1);

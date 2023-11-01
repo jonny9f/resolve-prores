@@ -2,7 +2,17 @@
 
 #include <memory>
 
+
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/imgutils.h>
+}
+
 #include "wrapper/plugin_api.h"
+
+
+
 
 using namespace IOPlugin;
 
@@ -43,8 +53,19 @@ protected:
 
 private:
     void SetupContext(bool p_IsFinalPass);
+    void OpenAV();
+    void CloseAV();
 
 private:
+
+    AVFormatContext* m_outFormatContext;
+    AVCodec* m_codec;
+    AVStream* m_outStream;
+    AVCodecContext* m_codecContext;
+    AVFrame* m_frame;
+    AVPacket* m_packet;
+
+
     x264_t* m_pContext;
     int m_ColorModel;
     std::unique_ptr<UISettingsController> m_pSettings;

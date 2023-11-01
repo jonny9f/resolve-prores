@@ -6,7 +6,7 @@ X264_DIR = /home/jon/dev/resolve/build/
 BUILD_DIR = .
 SUBDIRS = wrapper
 
-CFLAGS += -I$(X264_DIR)/include
+CFLAGS += -I$(X264_DIR)/include 
 
 ifeq ($(OS_TYPE), Linux)
 LDFLAGS = -shared '-Wl,-rpath,$$ORIGIN' -Wl,-z,origin -lpthread  
@@ -16,7 +16,7 @@ endif
 
 TARGET = $(BINDIR)/prores_encoder_plugin.dvcp
 
-LDFLAGS += -L$(X264_DIR)/lib -lx264 -lz 
+LDFLAGS += -lz -lavformat -lavcodec -lavutil
 
 OBJDIR = $(BUILD_DIR)/build
 BINDIR = $(BUILD_DIR)/bin
