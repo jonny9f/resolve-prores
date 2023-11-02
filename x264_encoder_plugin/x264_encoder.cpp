@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include "prores_props.h"
 
 #include "x264.h"
 
@@ -13,9 +14,6 @@
 const uint8_t ProResEncoder::s_UUID[] = { 0x6a, 0x88, 0xe8, 0x41, 0xd8, 0xe4, 0x41, 0x4b, 0x87, 0x9e, 0xa4, 0x80, 0xfc, 0x90, 0xda, 0xb4 };
 
 static std::string s_TmpFileName = "/tmp/x264_multipass.log";
-
-extern    AVCodec* g_codec;
-extern    AVCodecContext* g_codecContext;
 
 
 class UISettingsController
@@ -551,16 +549,7 @@ StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
     val = 'apch';
     p_pProps->SetProperty(pIOPropFourCC, propTypeUInt32, &val, 1);
 
-
-    // Find the ProRes codec
-    m_codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
-    if (!m_codec) {
-         g_Log(logLevelError,"ProRes codec not found" );
-        return errFail;
-    }
-
-    g_codec = m_codec;
-
+    
     return errNone;
 }
 void ProResEncoder::OpenAV()
@@ -574,8 +563,13 @@ void ProResEncoder::OpenAV()
     int width = m_CommonProps.GetWidth();
     int height = m_CommonProps.GetHeight();
     int framerate = m_CommonProps.GetFrameRateNum();
-    std::string filename( "/tmp/test.mov" );
 
+    // Find the ProRes codec
+    m_codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
+    if (!m_codec) {
+         g_Log(logLevelError,"ProRes codec not found" );
+        return;
+    }
 
     // Initialize the codec context
     m_codecContext = avcodec_alloc_context3(m_codec);
@@ -584,9 +578,6 @@ void ProResEncoder::OpenAV()
         return;
     }
 
-    g_codecContext = m_codecContext;
-
-    
     g_Log(logLevelInfo, "image %dx%d", width, height);
 
     // Set codec parameters (e.g., width, height, bitrate, etc.)
@@ -598,6 +589,7 @@ void ProResEncoder::OpenAV()
     m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
     m_codecContext->thread_count = 16;
     m_codecContext->time_base = (AVRational){1, framerate};
+    m_codecContext->framerate = (AVRational){framerate, 1};
   
 
     if (avcodec_open2(m_codecContext, m_codec, nullptr) < 0) {
@@ -783,6 +775,23 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
         }
     }
 
+    uint64_t val = reinterpret_cast<uint64_t>(m_codec);
+    StatusCode res = p_pBuff->SetProperty( pIOPropAVCodec, propTypeUInt64, reinterpret_cast<const void*>(&val), 1 );    
+    if (res != errNone)
+    {
+        g_Log(logLevelError,"Failed to set codec" );
+        return res;
+    }
+
+    val = reinterpret_cast<uint64_t>(m_codecContext);
+    res = p_pBuff->SetProperty( pIOPropAVCodecContext, propTypeUInt64, reinterpret_cast<const void*>(&val), 1 );    
+    if (res != errNone)
+    {
+        g_Log(logLevelError,"Failed to set codec context" );
+        return res;
+    }
+
+
     uint32_t temporal = 2;
     p_pBuff->SetProperty(pIOPropTemporalReordering, propTypeUInt32, &temporal, 1);
 
@@ -932,7 +941,11 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
             frame->format = AV_PIX_FMT_YUV422P10;
             frame->width =  m_codecContext->width;
             frame->height =  m_codecContext->height;
+
             frame->pts = pts * 90000/framerate;
+
+            g_Log(logLevelError, "PTS %ld", frame->pts );;
+
 
               // Allocate memory for the frame data
             if (av_frame_get_buffer(frame, 0) < 0) {

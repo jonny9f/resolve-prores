@@ -21,11 +21,12 @@ struct x264_t;
 struct x264_param_t;
 class UISettingsController;
 
+
 class ProResEncoder : public IPluginCodecRef
 {
 public:
     static const uint8_t s_UUID[];
-
+  
 public:
     ProResEncoder();
     ~ProResEncoder();

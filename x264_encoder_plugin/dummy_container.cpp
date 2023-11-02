@@ -3,15 +3,12 @@
 #include <assert.h>
 
 #include "x264_encoder.h"
+#include "prores_props.h"
 
 using namespace IOPlugin;
 
 // NOTE: When creating a plugin for release, please generate a new Container UUID in order to prevent conflicts with other third-party plugins.
 const uint8_t DummyContainer::s_UUID[] = { 0xad, 0x90, 0x3d, 0x57, 0x02, 0xf2, 0x4a, 0xc1, 0x9d, 0xde, 0x8f, 0xac, 0xa3, 0x48, 0x80, 0x51 };
-
-
-AVCodec* g_codec;
-AVCodecContext* g_codecContext;
 
 
 class DummyTrackWriter : public IPluginTrackBase, public IPluginTrackWriter
@@ -88,35 +85,7 @@ StatusCode DummyContainer::DoOpen(HostPropertyCollectionRef* p_pProps)
 
     g_Log(logLevelWarn, "Dummy Container Plugin :: open container with path: %s", path.c_str());
 
-    // Create a new AVFormatContext to represent the output format
-    if (avformat_alloc_output_context2(&m_outFormatContext, nullptr, "mov", path.c_str() )  < 0) {
-         g_Log(logLevelError,"Failed to create output stream");
-        return errFail;
-    }
-
-    // Create a new AVStream for the video
-    m_outStream = avformat_new_stream(m_outFormatContext, g_codec);
-    if (!m_outStream) {
-         g_Log(logLevelError,"Failed to create new stream");
-        return errFail;
-    }    
-
-    m_outStream->codecpar->codec_tag = 0;
-    avcodec_parameters_from_context(m_outStream->codecpar, g_codecContext);
-
-
-        // Open the output file
-    if (avio_open(&m_outFormatContext->pb,  path.c_str() , AVIO_FLAG_WRITE) < 0) {
-         g_Log(logLevelError, "Could not open output file" );
-        return errFail;;
-    }
-
-    // Write the file header
-    if (avformat_write_header(m_outFormatContext, nullptr) < 0) {
-         g_Log(logLevelError,  "Error writing file header" );
-        return errFail;
-    }
-
+ 
 
     return errNone;
 }
@@ -176,7 +145,61 @@ StatusCode DummyContainer::DoAddTrack(HostPropertyCollectionRef* p_pProps, HostP
         HostCodecConfigCommon codecCfg;
         codecCfg.Load(p_pCodecProps);
 
+        AVCodec* codec;
+        const void* pVal = NULL;
+        PropertyType propType;
+        int numVals = 0;
+        StatusCode ret = p_pCodecProps->GetProperty(pIOPropAVCodec, &propType, &pVal, &numVals );
+        if (ret != errNone) {
+            g_Log(logLevelError,"Failed to get codec");
+            return errFail;
+        }
+        uint64_t val = *reinterpret_cast<const uint64_t*>(pVal);
+        codec = reinterpret_cast<AVCodec*>(val);
+
+        AVCodecContext* codecContext;
+        ret = p_pCodecProps->GetProperty(pIOPropAVCodecContext, &propType, &pVal, &numVals );
+        if (ret != errNone) {
+            g_Log(logLevelError,"Failed to get codec context");
+            return errFail;
+        }
+        val = *reinterpret_cast<const uint64_t*>(pVal);
+        codecContext = reinterpret_cast<AVCodecContext*>(val);
+
+
         // extract extra options from p_pCodecProps if needed such as magic cookie etc, whichever the codec has set
+              // Create a new AVStream for the video
+
+      // Create a new AVFormatContext to represent the output format
+        std::string path;
+        p_pProps->GetString(pIOPropPath, path);
+
+        if (avformat_alloc_output_context2(&m_outFormatContext, nullptr, "mov", path.c_str() )  < 0) {
+            g_Log(logLevelError,"Failed to create output stream");
+            return errFail;
+        }              
+
+        m_outStream = avformat_new_stream(m_outFormatContext, codec);
+        if (!m_outStream) {
+            g_Log(logLevelError,"Failed to create new stream");
+            return errFail;
+        }    
+
+        m_outStream->codecpar->codec_tag = 0;
+        avcodec_parameters_from_context(m_outStream->codecpar, codecContext);
+
+
+            // Open the output file
+        if (avio_open(&m_outFormatContext->pb,  path.c_str() , AVIO_FLAG_WRITE) < 0) {
+            g_Log(logLevelError, "Could not open output file" );
+            return errFail;;
+        }
+
+        // Write the file header
+        if (avformat_write_header(m_outFormatContext, nullptr) < 0) {
+            g_Log(logLevelError,  "Error writing file header" );
+            return errFail;
+        }
 
         // try to find the sample x264 plugin config entry if it was set
         std::string markerColor;
