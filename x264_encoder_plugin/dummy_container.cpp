@@ -9,6 +9,11 @@ using namespace IOPlugin;
 // NOTE: When creating a plugin for release, please generate a new Container UUID in order to prevent conflicts with other third-party plugins.
 const uint8_t DummyContainer::s_UUID[] = { 0xad, 0x90, 0x3d, 0x57, 0x02, 0xf2, 0x4a, 0xc1, 0x9d, 0xde, 0x8f, 0xac, 0xa3, 0x48, 0x80, 0x51 };
 
+
+AVCodec* g_codec;
+AVCodecContext* g_codecContext;
+
+
 class DummyTrackWriter : public IPluginTrackBase, public IPluginTrackWriter
 {
 public:
@@ -25,6 +30,7 @@ public:
     {
         DummyContainer* pContainer = dynamic_cast<DummyContainer*>(m_pContainer);
         assert(pContainer != NULL);
+
 
         return m_IsVideo ? pContainer->WriteVideo(m_TrackIdx, p_pBuf) : pContainer->WriteAudio(m_TrackIdx, p_pBuf);
     }
@@ -61,7 +67,7 @@ StatusCode DummyContainer::s_Register(HostListRef* p_pList)
     return errNone;
 }
 
-DummyContainer::DummyContainer()
+DummyContainer::DummyContainer() : m_outFormatContext(0), m_outStream(0)
 {
 }
 
@@ -78,14 +84,48 @@ StatusCode DummyContainer::DoOpen(HostPropertyCollectionRef* p_pProps)
 {
     std::string path;
     p_pProps->GetString(pIOPropPath, path);
+    
 
     g_Log(logLevelWarn, "Dummy Container Plugin :: open container with path: %s", path.c_str());
+
+    // Create a new AVFormatContext to represent the output format
+    if (avformat_alloc_output_context2(&m_outFormatContext, nullptr, "mov", path.c_str() )  < 0) {
+         g_Log(logLevelError,"Failed to create output stream");
+        return errFail;
+    }
+
+    // Create a new AVStream for the video
+    m_outStream = avformat_new_stream(m_outFormatContext, g_codec);
+    if (!m_outStream) {
+         g_Log(logLevelError,"Failed to create new stream");
+        return errFail;
+    }    
+
+    m_outStream->codecpar->codec_tag = 0;
+    avcodec_parameters_from_context(m_outStream->codecpar, g_codecContext);
+
+
+        // Open the output file
+    if (avio_open(&m_outFormatContext->pb,  path.c_str() , AVIO_FLAG_WRITE) < 0) {
+         g_Log(logLevelError, "Could not open output file" );
+        return errFail;;
+    }
+
+    // Write the file header
+    if (avformat_write_header(m_outFormatContext, nullptr) < 0) {
+         g_Log(logLevelError,  "Error writing file header" );
+        return errFail;
+    }
+
 
     return errNone;
 }
 
 StatusCode DummyContainer::DoAddTrack(HostPropertyCollectionRef* p_pProps, HostPropertyCollectionRef* p_pCodecProps, IPluginTrackBase** p_pTrack)
 {
+
+    g_Log(logLevelWarn, "Dummy Container Plugin :: DoAddTrack ");
+
     uint32_t mediaType = 0;
     if (!p_pProps->GetUINT32(pIOPropMediaType, mediaType) || ((mediaType != mediaVideo) && (mediaType != mediaAudio)))
     {
@@ -221,6 +261,12 @@ StatusCode DummyContainer::DoClose()
     }
     m_VideoTrackVec.clear();
 
+    // Clean up and close the output file
+    av_write_trailer(m_outFormatContext);
+
+    avio_close(m_outFormatContext->pb);
+
+
     return errNone;
 }
 
@@ -253,6 +299,15 @@ StatusCode DummyContainer::WriteVideo(uint32_t p_TrackIdx, HostBufferRef* p_pBuf
     {
         // put the writing code here
         g_Log(logLevelWarn, "Dummy Container Plugin :: Write Video of %ld for track %d: pts: %lld, dts: %lld, duration: %f", bufSize, p_TrackIdx, pts, dts, duration);
+        // Write the encoded data to the output file
+        AVPacket packet;
+        av_init_packet(&packet);
+        av_packet_from_data(&packet, reinterpret_cast<uint8_t*>(pBuf), bufSize);
+
+        if (av_write_frame(m_outFormatContext, &packet) < 0) {
+          g_Log(logLevelError, "error writing");
+        }
+
         p_pBuf->UnlockBuffer();
     }
 

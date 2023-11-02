@@ -1,8 +1,14 @@
 #pragma once
 
 #include "wrapper/plugin_api.h"
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/imgutils.h>
+}
 
 using namespace IOPlugin;
+
 
 class DummyTrackWriter;
 class DummyContainer : public IPluginContainerRef
@@ -30,4 +36,8 @@ protected:
     virtual ~DummyContainer();
     std::vector<DummyTrackWriter*> m_VideoTrackVec;
     std::vector<DummyTrackWriter*> m_AudioTrackVec;
+
+    AVStream* m_outStream;
+    AVFormatContext* m_outFormatContext;
+
 };

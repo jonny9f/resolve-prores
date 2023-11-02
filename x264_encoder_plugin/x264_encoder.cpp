@@ -14,6 +14,10 @@ const uint8_t ProResEncoder::s_UUID[] = { 0x6a, 0x88, 0xe8, 0x41, 0xd8, 0xe4, 0x
 
 static std::string s_TmpFileName = "/tmp/x264_multipass.log";
 
+extern    AVCodec* g_codec;
+extern    AVCodecContext* g_codecContext;
+
+
 class UISettingsController
 {
 public:
@@ -472,9 +476,7 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
 }
 
 ProResEncoder::ProResEncoder()
-    : m_outFormatContext(0)
-    , m_codec(0)
-    , m_outStream(0)
+    : m_codec(0)
     , m_codecContext(0)
     , m_frame(0)
     , m_packet(0)
@@ -549,6 +551,16 @@ StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
     val = 'apch';
     p_pProps->SetProperty(pIOPropFourCC, propTypeUInt32, &val, 1);
 
+
+    // Find the ProRes codec
+    m_codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
+    if (!m_codec) {
+         g_Log(logLevelError,"ProRes codec not found" );
+        return errFail;
+    }
+
+    g_codec = m_codec;
+
     return errNone;
 }
 void ProResEncoder::OpenAV()
@@ -559,25 +571,11 @@ void ProResEncoder::OpenAV()
     // Initialize FFmpeg codecs and formats
     avcodec_register_all();
 
-
     int width = m_CommonProps.GetWidth();
     int height = m_CommonProps.GetHeight();
     int framerate = m_CommonProps.GetFrameRateNum();
     std::string filename( "/tmp/test.mov" );
 
-    // Create a new AVFormatContext to represent the output format
-    m_outFormatContext = nullptr;
-    if (avformat_alloc_output_context2(&m_outFormatContext, nullptr, "mov", filename.c_str()) < 0) {
-        g_Log(logLevelError, "Could not create output context" );
-        return ;
-    }
-
-    // Find the ProRes codec
-    m_codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
-    if (!m_codec) {
-         g_Log(logLevelError,"ProRes codec not found" );
-        return;
-    }
 
     // Initialize the codec context
     m_codecContext = avcodec_alloc_context3(m_codec);
@@ -585,6 +583,8 @@ void ProResEncoder::OpenAV()
          g_Log(logLevelError, "Failed to allocate codec context");
         return;
     }
+
+    g_codecContext = m_codecContext;
 
     
     g_Log(logLevelInfo, "image %dx%d", width, height);
@@ -599,34 +599,11 @@ void ProResEncoder::OpenAV()
     m_codecContext->thread_count = 16;
     m_codecContext->time_base = (AVRational){1, framerate};
   
-     // Create a new AVStream for the video
-    m_outStream = avformat_new_stream(m_outFormatContext, m_codec);
-    if (!m_outStream) {
-         g_Log(logLevelError,"Failed to create new stream");
-        return;
-    }    
-
-    m_outStream->codecpar->codec_tag = 0;
-    avcodec_parameters_from_context(m_outStream->codecpar, m_codecContext);
-
 
     if (avcodec_open2(m_codecContext, m_codec, nullptr) < 0) {
         g_Log(logLevelError, "Could not open codec");
         return;
     }
-
-        // Open the output file
-    if (avio_open(&m_outFormatContext->pb, filename.c_str(), AVIO_FLAG_WRITE) < 0) {
-         g_Log(logLevelError, "Could not open output file" );
-        return ;
-    }
-
-    // Write the file header
-    if (avformat_write_header(m_outFormatContext, nullptr) < 0) {
-         g_Log(logLevelError,  "Error writing file header" );
-        return;
-    }
-
 
     g_Log(logLevelInfo, "OpenAV complete");
 
@@ -635,13 +612,11 @@ void ProResEncoder::OpenAV()
 void ProResEncoder::CloseAV()
 {
     // Clean up and close the output file
-    if ( m_outFormatContext ) {
+    if ( m_codecContext ) {
       g_Log(logLevelInfo, "X264 Plugin :: CloseAV" );
 
-      av_write_trailer(m_outFormatContext);
       avcodec_free_context(&m_codecContext);
-      avio_close(m_outFormatContext->pb);
-      m_outFormatContext = 0;
+      m_codecContext = NULL;
     }
 }
 
@@ -820,12 +795,14 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
         }
     }
 
+
+
     return errNone;
 }
 
 StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
 {
-    //g_Log(logLevelInfo, "X264 Plugin :: DoProcess");
+
     if (m_Error != errNone)
     {
         return m_Error;
@@ -995,56 +972,45 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
                   g_Log(logLevelError, "error encoding");
                 }
 
-                // Write the encoded data to the output file
-                if (av_write_frame(m_outFormatContext, &packet) < 0) {
-                  g_Log(logLevelError, "error writing");
+                // write packet to output buffer
+                HostBufferRef outBuf(false);
+                bytes = packet.size;
+
+                if (bytes < 0)
+                {
+                return errFail;
                 }
+                else if (bytes == 0)
+                {
+                return errMoreData;
+                }
+                if (!outBuf.IsValid() || !outBuf.Resize(bytes))
+                {
+                    return errAlloc;
+                }
+
+                char* pOutBuf = NULL;
+                size_t outBufSize = 0;
+                if (!outBuf.LockBuffer(&pOutBuf, &outBufSize))
+                {
+                    return errAlloc;
+                }
+
+
+                memcpy(pOutBuf, packet.data, bytes );
+
+                int64_t ts = frame->pts ;
+                outBuf.SetProperty(pIOPropPTS, propTypeInt64, &ts , 1);
+                outBuf.SetProperty(pIOPropDTS, propTypeInt64, &ts , 1);
+                m_pCallback->SendOutput(&outBuf);
 
                 av_packet_unref(&packet);
               }
             av_frame_free(&frame);
+
         }
-    }
+  }
 
-    if (bytes < 0)
-    {
-        return errFail;
-    }
-    else if (bytes == 0)
-    {
-        return errMoreData;
-    }
-    else if (m_IsMultiPass && (m_PassesDone == 0))
-    {
-        return errNone;
-    }
+  return errNone;
 
-    // fill the out buffer and info
-    HostBufferRef outBuf(false);
-    if (!outBuf.IsValid() || !outBuf.Resize(bytes))
-    {
-        return errAlloc;
-    }
-
-    char* pOutBuf = NULL;
-    size_t outBufSize = 0;
-    if (!outBuf.LockBuffer(&pOutBuf, &outBufSize))
-    {
-        return errAlloc;
-    }
-
-    assert(outBufSize == bytes);
-
-    memcpy(pOutBuf, pNals[0].p_payload, bytes);
-
-    int64_t ts = outPic.i_pts;
-    outBuf.SetProperty(pIOPropPTS, propTypeInt64, &ts, 1);
-
-    ts = outPic.i_dts;
-    outBuf.SetProperty(pIOPropDTS, propTypeInt64, &ts, 1);
-
-    uint8_t isKeyFrame = IS_X264_TYPE_I(outPic.i_type) ? 1 : 0;
-    outBuf.SetProperty(pIOPropIsKeyFrame, propTypeUInt8, &isKeyFrame, 1);
-
-    return m_pCallback->SendOutput(&outBuf);
 }

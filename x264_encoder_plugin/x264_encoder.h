@@ -58,9 +58,7 @@ private:
 
 private:
 
-    AVFormatContext* m_outFormatContext;
     AVCodec* m_codec;
-    AVStream* m_outStream;
     AVCodecContext* m_codecContext;
     AVFrame* m_frame;
     AVPacket* m_packet;
