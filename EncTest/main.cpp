@@ -1,18 +1,19 @@
+
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
-}
+};
 
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
 
 int main() {
-    av_register_all();
+    //av_register_all();
 
     // Initialize FFmpeg codecs and formats
-    avcodec_register_all();
+    //avcodec_register_all();
 
     // Create a new AVFormatContext to represent the output format
     AVFormatContext* outFormatContext = nullptr;
@@ -22,7 +23,7 @@ int main() {
     }
 
     // Find the ProRes codec
-    AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
+    const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
     if (!codec) {
         std::cerr << "ProRes codec not found" << std::endl;
         return -1;
@@ -36,39 +37,37 @@ int main() {
     }
 
     // Set codec parameters (e.g., width, height, bitrate, etc.)
+
     codecContext->width = 1920;
     codecContext->height = 1080;
-    codecContext->bit_rate = 5000000;
-    codecContext->codec_id = AV_CODEC_ID_PRORES;
-    codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
     codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
-    codecContext->time_base.num = 1;
-    codecContext->time_base.den = 25;
-  
+    codecContext->time_base = AVRational{1, framerate};
+    codecContext->framerate = AVRational{framerate, 1};
+
 
     if (avcodec_open2(codecContext, codec, nullptr) < 0) {
         std::cerr << "Could not open codec" << std::endl;
         return -1;
     }
 
-        // Create a new AVStream for the video
+    // Create a new AVStream for the video
     AVStream* outStream = avformat_new_stream(outFormatContext, codec);
     if (!outStream) {
         std::cerr << "Failed to create new stream" << std::endl;
         return -1;
     }
 
-
-    outStream->codecpar->codec_tag = 0;
+    // Copy the codec parameters to the output stream
     avcodec_parameters_from_context(outStream->codecpar, codecContext);
 
+
+  
     // Open the output file
     if (avio_open(&outFormatContext->pb, "output.mov", AVIO_FLAG_WRITE) < 0) {
         std::cerr << "Could not open output file" << std::endl;
         return -1;
     }
-    outStream->time_base.den = 25;
-    outStream->time_base.num = 1;
+    
 
     // Write the file header
     if (avformat_write_header(outFormatContext, nullptr) < 0) {
@@ -102,7 +101,6 @@ int main() {
     frame->width = 1920;
     frame->height = 1080;
 
-
     // Allocate memory for the frame data
     if (av_frame_get_buffer(frame, 0) < 0) {
       std::cerr << "Could not allocate frame data" << std::endl;
@@ -125,17 +123,17 @@ int main() {
 
       uint16_t* row = (uint16_t*)(frame->data[0] + y * frame->linesize[0]);
 
-      std::cout << 'Y' << frame->linesize[0] << std::endl;
+      //std::cout << 'Y' << frame->linesize[0] << std::endl;
 
       // pointer to U
       uint16_t* rowU = (uint16_t*)(frame->data[1] + y * frame->linesize[1]);
 
-      std::cout << 'U' << frame->linesize[1] << std::endl;
+      //std::cout << 'U' << frame->linesize[1] << std::endl;
       
       // pointer to V
       uint16_t* rowV = (uint16_t*)(frame->data[2] + y * frame->linesize[2]);
 
-      std::cout << 'V' << frame->linesize[2] << std::endl;
+      //std::cout << 'V' << frame->linesize[2] << std::endl;
             
 
       uint16_t* row16bit = image10bit.ptr<uint16_t>(y);
@@ -177,7 +175,7 @@ int main() {
     for (int i = 0; i < 10; i++) {
 
 
-      frame->pts = i * 25;
+      frame->pts = i * 90000/25;
 
    
       // Encode the frame
@@ -217,5 +215,4 @@ int main() {
 
     return 0;
 }
-
 

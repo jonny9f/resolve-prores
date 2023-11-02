@@ -546,6 +546,9 @@ StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
     p_pProps->SetProperty(pIOPropHSubsampling, propTypeUInt8, &hSampling, 1);
     p_pProps->SetProperty(pIOPropVSubsampling, propTypeUInt8, &vSampling, 1);
 
+    val = 'apch';
+    p_pProps->SetProperty(pIOPropFourCC, propTypeUInt32, &val, 1);
+
     return errNone;
 }
 void ProResEncoder::OpenAV()
@@ -559,6 +562,7 @@ void ProResEncoder::OpenAV()
 
     int width = m_CommonProps.GetWidth();
     int height = m_CommonProps.GetHeight();
+    int framerate = m_CommonProps.GetFrameRateNum();
     std::string filename( "/tmp/test.mov" );
 
     // Create a new AVFormatContext to represent the output format
@@ -593,9 +597,7 @@ void ProResEncoder::OpenAV()
     m_codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
     m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
     m_codecContext->thread_count = 16;
-
-    // set fps to 30
-    m_codecContext->time_base = (AVRational){1, 30};
+    m_codecContext->time_base = (AVRational){1, framerate};
   
      // Create a new AVStream for the video
     m_outStream = avformat_new_stream(m_outFormatContext, m_codec);
@@ -613,8 +615,6 @@ void ProResEncoder::OpenAV()
         return;
     }
 
-
- 
         // Open the output file
     if (avio_open(&m_outFormatContext->pb, filename.c_str(), AVIO_FLAG_WRITE) < 0) {
          g_Log(logLevelError, "Could not open output file" );
@@ -951,9 +951,11 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
             }
 
               // Initialize the frame parameters
+            int framerate = m_CommonProps.GetFrameRateNum();
             frame->format = AV_PIX_FMT_YUV422P10;
             frame->width =  m_codecContext->width;
             frame->height =  m_codecContext->height;
+            frame->pts = pts * 90000/framerate;
 
               // Allocate memory for the frame data
             if (av_frame_get_buffer(frame, 0) < 0) {
