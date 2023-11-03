@@ -41,7 +41,6 @@ protected:
     virtual StatusCode DoProcess(HostBufferRef* p_pBuff) override;
 
 private:
-    void SetupContext(bool p_IsFinalPass);
     void OpenAV();
     void CloseAV();
 
@@ -53,8 +52,6 @@ private:
     AVPacket* m_packet;
 
 
-    x264_t* m_pContext;
-    int m_ColorModel;
     std::unique_ptr<UISettingsController> m_pSettings;
     HostCodecConfigCommon m_CommonProps;
 

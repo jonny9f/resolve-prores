@@ -13,8 +13,6 @@
 // NOTE: When creating a plugin for release, please generate a new Codec UUID in order to prevent conflicts with other third-party plugins.
 const uint8_t ProResEncoder::s_UUID[] = { 0x6a, 0x88, 0xe8, 0x41, 0xd8, 0xe4, 0x41, 0x4b, 0x87, 0x9e, 0xa4, 0x80, 0xfc, 0x90, 0xda, 0xb4 };
 
-static std::string s_TmpFileName = "/tmp/x264_multipass.log";
-
 
 class UISettingsController
 {
@@ -476,8 +474,6 @@ ProResEncoder::ProResEncoder()
     , m_codecContext(0)
     , m_frame(0)
     , m_packet(0)
-    , m_pContext(0)
-    , m_ColorModel(-1)
     , m_Error(errNone)
 {
 
@@ -488,11 +484,6 @@ ProResEncoder::~ProResEncoder()
 {
     g_Log(logLevelError, "X264 Plugin :: Destructor");
     CloseAV();
-        if (m_pContext)
-    {
-        x264_encoder_close(m_pContext);
-        m_pContext = 0;
-    }
 }
 
 void ProResEncoder::DoFlush()
@@ -598,137 +589,23 @@ void ProResEncoder::CloseAV()
     }
 }
 
-void ProResEncoder::SetupContext(bool p_IsFinalPass)
-{
-    g_Log(logLevelInfo, "X264 Plugin :: SetupContext %d", (int)p_IsFinalPass);
-    if (m_pContext)
-    {
-        x264_encoder_close(m_pContext);
-        m_pContext = 0;
-    }
-
-    x264_param_t param;
-
-    const char* pProfile = m_pSettings->GetProfile();
-    m_ColorModel = (((pProfile != NULL) && (strcmp(pProfile, "high422") == 0)) ? X264_CSP_UYVY : X264_CSP_NV12);
-
-
-    x264_param_default_preset(&param, m_pSettings->GetEncPreset(), m_pSettings->GetTune());
-    param.i_csp              = m_ColorModel;
-    param.i_width            = m_CommonProps.GetWidth();
-    param.i_height           = m_CommonProps.GetHeight();
-    param.b_vfr_input        = 0;
-    param.i_bitdepth         = 8;
-    param.i_bframe           = 2;
-    param.i_bframe_adaptive  = X264_B_ADAPT_NONE;
-    param.i_bframe_pyramid   = X264_B_PYRAMID_NORMAL;
-    param.b_open_gop         = 1;
-    param.i_keyint_max       = 12;
-    param.i_fps_num          = m_CommonProps.GetFrameRateNum();
-    param.i_fps_den          = m_CommonProps.GetFrameRateDen();
-    param.b_repeat_headers   = 0;
-    param.b_annexb           = 0;
-    param.b_stitchable       = 1;
-    param.vui.b_fullrange    = m_CommonProps.IsFullRange();
-
-    if (strcmp(pProfile, "baseline") != 0)
-    {
-        const uint8_t fieldOrder = m_CommonProps.GetFieldOrder();
-        param.b_interlaced = ((fieldOrder == fieldTop) || (fieldOrder == fieldBottom));
-    }
-
-    param.rc.i_rc_method = m_pSettings->GetQualityMode();
-    if ((param.rc.i_rc_method != X264_RC_ABR))
-    {
-        const int qp = m_pSettings->GetQP();
-
-        param.rc.i_qp_constant = qp;
-        param.rc.f_rf_constant = std::min<int>(50, qp);
-        param.rc.f_rf_constant_max = std::min<int>(51, qp + 5);
-    }
-    else if (param.rc.i_rc_method == X264_RC_ABR)
-    {
-        param.rc.i_bitrate = m_pSettings->GetBitRate();
-        param.rc.i_vbv_buffer_size = m_pSettings->GetBitRate();
-        param.rc.i_vbv_max_bitrate = m_pSettings->GetBitRate();
-    }
-
-    if (pProfile != NULL)
-    {
-        int resCode = x264_param_apply_profile(&param, pProfile);
-        if (resCode != 0)
-        {
-            m_Error = errFail;
-            return;
-        }
-    }
-
-    m_pContext = x264_encoder_open(&param);
-    m_Error = ((m_pContext != NULL) ? errNone : errFail);
-
-
-
-
-}
-
 StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
 {
     g_Log(logLevelInfo, "X264 Plugin :: DoOpen");
-    assert(m_pContext == NULL);
-
+    
     m_CommonProps.Load(p_pBuff);
 
     OpenAV();
 
-    const std::string& path = m_CommonProps.GetPath();
-    if (!path.empty())
+    const char* pProfile = m_pSettings->GetProfile();
+    if (strcmp(pProfile, "baseline") != 0)
     {
-        s_TmpFileName = path;
-        s_TmpFileName.append(".pass.log");
-    }
-    else
-    {
-        s_TmpFileName = "/tmp/x264_multipass.log";
+        // const uint8_t fieldOrder = m_CommonProps.GetFieldOrder();
+        // param.b_interlaced = ((fieldOrder == fieldTop) || (fieldOrder == fieldBottom));
     }
 
     m_pSettings.reset(new UISettingsController(m_CommonProps));
     m_pSettings->Load(p_pBuff);
-
-
-    // setup context for cookie
-    SetupContext(true /* isFinalPass */);
-    if (m_Error != errNone)
-    {
-        return m_Error;
-    }
-
-    x264_nal_t* pNals = 0;
-    int numNals = 0;
-    int hdrBytes = x264_encoder_headers(m_pContext, &pNals, &numNals);
-    if (hdrBytes > 0)
-    {
-        std::vector<uint8_t> cookie;
-        for (int i = 0; i < numNals; ++i)
-        {
-            if (pNals[i].i_type == NAL_SEI)
-            {
-                continue;
-            }
-
-            pNals[i].p_payload[0] = 0;
-            pNals[i].p_payload[1] = 0;
-            pNals[i].p_payload[2] = 0;
-            pNals[i].p_payload[3] = 1;
-            cookie.insert(cookie.end(), pNals[i].p_payload, pNals[i].p_payload + pNals[i].i_payload);
-        }
-
-        if (!cookie.empty())
-        {
-            p_pBuff->SetProperty(pIOPropMagicCookie, propTypeUInt8, &cookie[0], cookie.size());
-            uint32_t fourCC = 0;
-            p_pBuff->SetProperty(pIOPropMagicCookieType, propTypeUInt32, &fourCC, 1);
-        }
-    }
 
     uint64_t val = reinterpret_cast<uint64_t>(m_codec);
     StatusCode res = p_pBuff->SetProperty( pIOPropAVCodec, propTypeUInt64, reinterpret_cast<const void*>(&val), 1 );    
@@ -745,11 +622,6 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
         g_Log(logLevelError,"Failed to set codec context" );
         return res;
     }
-
-
-    uint32_t temporal = 2;
-    p_pBuff->SetProperty(pIOPropTemporalReordering, propTypeUInt32, &temporal, 1);
-
 
     return errNone;
 }
@@ -809,119 +681,111 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         g_Log(logLevelInfo, "X264 Plugin :: PTS %ld", pts );
 
 
-        if (m_ColorModel == X264_CSP_UYVY)
-        {
-            g_Log(logLevelInfo, "X264 Plugin :: UYVY");
-            p_pBuff->UnlockBuffer();
+        const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+
+        // Initialize a packet for holding the encoded data
+        AVPacket packet;
+        av_init_packet(&packet);
+        packet.data = nullptr;
+        packet.size = 0;
+        
+        // Create a frame for encoding
+        AVFrame* frame = av_frame_alloc();
+        if (!frame) {
+            g_Log(logLevelError, "Could not allocate frame" );
+          return errFail;
         }
-        else
+
+          // Initialize the frame parameters
+        float framerate = (float)m_codecContext->framerate.num / (float)m_codecContext->framerate.den;
+        frame->format = AV_PIX_FMT_YUV422P10;
+        frame->width =  m_codecContext->width;
+        frame->height =  m_codecContext->height;            
+        frame->pts = int64_t(pts * (90000./ framerate) );
+
+
+        g_Log(logLevelError, "PTS %ld", frame->pts );;
+
+
+          // Allocate memory for the frame data
+        if (av_frame_get_buffer(frame, 0) < 0) {
+          g_Log(logLevelError, "Could not allocate frame data" );
+            return errFail;
+        }
+
+        pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+
+
+        for (int y = 0; y < height; ++y)
         {
-            const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+            uint16_t* row = (uint16_t*)(frame->data[0] + y * frame->linesize[0]);
+            uint16_t* rowU = (uint16_t*)(frame->data[1] + y * frame->linesize[1]);
+            uint16_t* rowV = (uint16_t*)(frame->data[2] + y * frame->linesize[2]);
 
-            // Initialize a packet for holding the encoded data
-            AVPacket packet;
-            av_init_packet(&packet);
-            packet.data = nullptr;
-            packet.size = 0;
-            
-            // Create a frame for encoding
-            AVFrame* frame = av_frame_alloc();
-            if (!frame) {
-                g_Log(logLevelError, "Could not allocate frame" );
-              return errFail;
-            }
-
-              // Initialize the frame parameters
-            float framerate = (float)m_codecContext->framerate.num / (float)m_codecContext->framerate.den;
-            frame->format = AV_PIX_FMT_YUV422P10;
-            frame->width =  m_codecContext->width;
-            frame->height =  m_codecContext->height;            
-            frame->pts = int64_t(pts * (90000./ framerate) );
-
-
-            g_Log(logLevelError, "PTS %ld", frame->pts );;
-
-
-              // Allocate memory for the frame data
-            if (av_frame_get_buffer(frame, 0) < 0) {
-              g_Log(logLevelError, "Could not allocate frame data" );
-                return errFail;
-            }
-
-            pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
-
-
-            for (int y = 0; y < height; ++y)
+            for (int x = 0; x < width; x += 2)
             {
-                uint16_t* row = (uint16_t*)(frame->data[0] + y * frame->linesize[0]);
-                uint16_t* rowU = (uint16_t*)(frame->data[1] + y * frame->linesize[1]);
-                uint16_t* rowV = (uint16_t*)(frame->data[2] + y * frame->linesize[2]);
-
-                for (int x = 0; x < width; x += 2)
-                {
-                    // scale 8 bit to 10 bit
-                    row[x] = pSrc[1] << 2;
-                    row[x + 1] = pSrc[3] << 2;
-                    rowU[x/2] = pSrc[0] << 2;
-                    rowV[x/2] = pSrc[2] << 2;
-                    pSrc += 4;
-                }
+                // scale 8 bit to 10 bit
+                row[x] = pSrc[1] << 2;
+                row[x + 1] = pSrc[3] << 2;
+                rowU[x/2] = pSrc[0] << 2;
+                rowV[x/2] = pSrc[2] << 2;
+                pSrc += 4;
             }
-
-            p_pBuff->UnlockBuffer();
-
-                  // Encode the frame
-            int ret = avcodec_send_frame(m_codecContext, frame);
-            if (ret < 0) {
-              g_Log(logLevelError, "error sending");
-            }
-            while (ret >= 0) {
-                ret = avcodec_receive_packet(m_codecContext, &packet);
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                  break;
-                } else if (ret < 0) {
-                  g_Log(logLevelError, "error encoding");
-                }
-
-                // write packet to output buffer
-                HostBufferRef outBuf(false);
-                bytes = packet.size;
-
-                if (bytes < 0)
-                {
-                return errFail;
-                }
-                else if (bytes == 0)
-                {
-                return errMoreData;
-                }
-                if (!outBuf.IsValid() || !outBuf.Resize(bytes))
-                {
-                    return errAlloc;
-                }
-
-                char* pOutBuf = NULL;
-                size_t outBufSize = 0;
-                if (!outBuf.LockBuffer(&pOutBuf, &outBufSize))
-                {
-                    return errAlloc;
-                }
-
-
-                memcpy(pOutBuf, packet.data, bytes );
-
-                int64_t packet_pts = packet.pts;
-                int64_t packet_dts = packet.dts;
-
-                outBuf.SetProperty(pIOPropPTS, propTypeInt64, &packet_pts , 1);
-                outBuf.SetProperty(pIOPropDTS, propTypeInt64, &packet_dts , 1);
-                m_pCallback->SendOutput(&outBuf);
-                outBuf.UnlockBuffer();
-
-                av_packet_unref(&packet);
-              }
-            av_frame_free(&frame);
         }
+
+        p_pBuff->UnlockBuffer();
+
+              // Encode the frame
+        int ret = avcodec_send_frame(m_codecContext, frame);
+        if (ret < 0) {
+          g_Log(logLevelError, "error sending");
+        }
+        while (ret >= 0) {
+            ret = avcodec_receive_packet(m_codecContext, &packet);
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+              break;
+            } else if (ret < 0) {
+              g_Log(logLevelError, "error encoding");
+            }
+
+            // write packet to output buffer
+            HostBufferRef outBuf(false);
+            bytes = packet.size;
+
+            if (bytes < 0)
+            {
+            return errFail;
+            }
+            else if (bytes == 0)
+            {
+            return errMoreData;
+            }
+            if (!outBuf.IsValid() || !outBuf.Resize(bytes))
+            {
+                return errAlloc;
+            }
+
+            char* pOutBuf = NULL;
+            size_t outBufSize = 0;
+            if (!outBuf.LockBuffer(&pOutBuf, &outBufSize))
+            {
+                return errAlloc;
+            }
+
+
+            memcpy(pOutBuf, packet.data, bytes );
+
+            int64_t packet_pts = packet.pts;
+            int64_t packet_dts = packet.dts;
+
+            outBuf.SetProperty(pIOPropPTS, propTypeInt64, &packet_pts , 1);
+            outBuf.SetProperty(pIOPropDTS, propTypeInt64, &packet_dts , 1);
+            m_pCallback->SendOutput(&outBuf);
+            outBuf.UnlockBuffer();
+
+            av_packet_unref(&packet);
+          }
+      av_frame_free(&frame);
   }
 
   return errNone;
