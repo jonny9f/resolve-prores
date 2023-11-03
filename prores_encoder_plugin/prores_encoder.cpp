@@ -1,4 +1,4 @@
-#include "x264_encoder.h"
+#include "prores_encoder.h"
 
 #include <assert.h>
 #include <cstring>

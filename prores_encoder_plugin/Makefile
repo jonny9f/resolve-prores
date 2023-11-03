@@ -1,12 +1,12 @@
 include .mk.defs
 
 BASEDIR = ./
-X264_DIR = /home/jon/dev/resolve/build/
 
 BUILD_DIR = .
 SUBDIRS = wrapper
+X264_DIR = /home/jon/dev/resolve/build/
 
-CFLAGS += -I$(X264_DIR)/include -g -fPIC -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-parameter -Wno-unused-result -Wno-unused-result 
+CFLAGS +=  -I$(X264_DIR)/include -g -fPIC -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-parameter -Wno-unused-result -Wno-unused-result 
 
 ifeq ($(OS_TYPE), Linux)
 LDFLAGS = -shared '-Wl,-rpath,$$ORIGIN' -Wl,-z,origin -lpthread  
@@ -14,17 +14,17 @@ else
 LDFLAGS = -dynamiclib
 endif
 
-TARGET = $(BINDIR)/x264_encoder_plugin.dvcp
+TARGET = $(BINDIR)/prores_encoder_plugin.dvcp
 
-LDFLAGS += -L$(X264_DIR)/lib -lx264 -lz -lavformat -lavcodec -lavutil
+LDFLAGS += -L$(X264_DIR)/lib -lz -lx264 -lavformat -lavcodec -lavutil
 
 OBJDIR = $(BUILD_DIR)/build
 BINDIR = $(BUILD_DIR)/bin
 
 .PHONY: all
 
-HEADERS = plugin.h x264_encoder.h audio_encoder.h
-SRCS = plugin.cpp x264_encoder.cpp dummy_container.cpp audio_encoder.cpp
+HEADERS = plugin.h prores_encoder.h audio_encoder.h mov_container.h prores_props.h
+SRCS = plugin.cpp prores_encoder.cpp mov_container.cpp audio_encoder.cpp
 OBJS = $(SRCS:%.cpp=$(OBJDIR)/%.o)
 
 all: prereq make-subdirs $(HEADERS) $(SRCS) $(OBJS) $(TARGET)
@@ -58,6 +58,6 @@ clean-subdirs:
 
 # install: $(TARGET)
 install: all
-	mkdir -p $(BINDIR)/x264_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
-	cp $(TARGET) $(BINDIR)/x264_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
+	mkdir -p $(BINDIR)/prores_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
+	cp $(TARGET) $(BINDIR)/prores_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
 

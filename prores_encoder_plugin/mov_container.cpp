@@ -1,8 +1,8 @@
-#include "dummy_container.h"
+#include "mov_container.h"
 
 #include <assert.h>
 
-#include "x264_encoder.h"
+#include "prores_encoder.h"
 #include "prores_props.h"
 
 using namespace IOPlugin;

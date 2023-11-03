@@ -4,9 +4,9 @@
 
 #include <cstring>
 
-#include "x264_encoder.h"
+#include "prores_encoder.h"
 #include "audio_encoder.h"
-#include "dummy_container.h"
+#include "mov_container.h"
 
 // NOTE: When creating a plugin for release, please generate a new Plugin UUID in order to prevent conflicts with other third-party plugins.
 static const uint8_t pMyUUID[] = { 0x5d, 0x43, 0xce, 0x60, 0x45, 0x11, 0x4f, 0x58, 0x87, 0xde, 0xf3, 0x02, 0x80, 0x1e, 0x7b, 0xbc };
