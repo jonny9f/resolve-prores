@@ -762,23 +762,17 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         return m_Error;
     }
 
-    const int numDelayedFrames = x264_encoder_delayed_frames(m_pContext);
-    if (((p_pBuff == NULL) || !p_pBuff->IsValid()) && (numDelayedFrames == 0))
+    if ( p_pBuff == NULL) 
     {
         return errMoreData;
     }
 
-    x264_picture_t outPic;
-    x264_picture_init(&outPic);
-    x264_nal_t* pNals = 0;
-    int numNals = 0;
     int bytes = 0;
     int64_t pts = -1;
     if ((p_pBuff == NULL) || !p_pBuff->IsValid())
     {
         // flushing
         g_Log(logLevelError, "X264 Plugin :: FLUSHING");
-        bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, 0, &outPic);
         CloseAV();
     }
     else
@@ -815,57 +809,13 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         g_Log(logLevelInfo, "X264 Plugin :: PTS %ld", pts );
 
 
-        x264_picture_t inPic;
-        x264_picture_init(&inPic);
-        inPic.i_pts = pts;
-        inPic.img.plane[1] = 0;
-        inPic.img.plane[2] = 0;
-        inPic.img.plane[3] = 0;
-        inPic.img.i_csp = m_ColorModel;
         if (m_ColorModel == X264_CSP_UYVY)
         {
-            inPic.img.i_plane = 1;
-            inPic.img.i_stride[0] = width * 2;
-            inPic.img.plane[0] = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
-            bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
+            g_Log(logLevelInfo, "X264 Plugin :: UYVY");
             p_pBuff->UnlockBuffer();
         }
         else
         {
-            // repack
-            // std::vector<uint8_t> yPlane;
-            // yPlane.reserve(width * height);
-            // std::vector<uint8_t> uvPlane;
-            // uvPlane.reserve(width * height / 2);
-            // const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
-
-            // for (int h = 0; h < height; ++h)
-            // {
-            //     for (int w = 0; w < width; w += 2)
-            //     {
-            //         yPlane.push_back(pSrc[1]);
-            //         yPlane.push_back(pSrc[3]);
-            //         if ((h % 2) == 0)
-            //         {
-            //             uvPlane.push_back(pSrc[0]);
-            //             uvPlane.push_back(pSrc[2]);
-            //         }
-
-            //         pSrc += 4;
-            //     }
-            // }
-
-            // p_pBuff->UnlockBuffer();
-
-            // inPic.img.i_plane = 2;
-            // inPic.img.i_stride[0] = width;
-            // inPic.img.plane[0] = yPlane.data();
-            // inPic.img.i_stride[1] = width;
-            // inPic.img.plane[1] = uvPlane.data();
-            // bytes = x264_encoder_encode(m_pContext, &pNals, &numNals, &inPic, &outPic);
-
-
-            // add FFMPEG repack
             const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
 
             // Initialize a packet for holding the encoded data
@@ -917,6 +867,9 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
                     pSrc += 4;
                 }
             }
+
+            p_pBuff->UnlockBuffer();
+
                   // Encode the frame
             int ret = avcodec_send_frame(m_codecContext, frame);
             if (ret < 0) {
@@ -963,11 +916,11 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
                 outBuf.SetProperty(pIOPropPTS, propTypeInt64, &packet_pts , 1);
                 outBuf.SetProperty(pIOPropDTS, propTypeInt64, &packet_dts , 1);
                 m_pCallback->SendOutput(&outBuf);
+                outBuf.UnlockBuffer();
 
                 av_packet_unref(&packet);
               }
             av_frame_free(&frame);
-
         }
   }
 
