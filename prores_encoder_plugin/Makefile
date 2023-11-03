@@ -6,7 +6,7 @@ BUILD_DIR = .
 SUBDIRS = wrapper
 X264_DIR = /home/jon/dev/resolve/build/
 
-CFLAGS +=  -g -fPIC -Wall -Wextra 
+CFLAGS +=  -g -fPIC -Wextra 
 
 ifeq ($(OS_TYPE), Linux)
 LDFLAGS = -shared '-Wl,-rpath,$$ORIGIN' -Wl,-z,origin -lpthread  
