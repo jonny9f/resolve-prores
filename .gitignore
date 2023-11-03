@@ -1,0 +1,11 @@
+build
+x264
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/output.mov
+.vscode/settings.json
+EncTest/output.mov
+EncTest/prores_encoder
+x264_encoder_plugin/bin/
+*.mov
+*.mp4
