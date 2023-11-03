@@ -323,7 +323,7 @@ StatusCode MovContainer::WriteVideo(uint32_t p_TrackIdx, HostBufferRef* p_pBuf)
     if (p_pBuf->LockBuffer(&pBuf, &bufSize))
     {
         // put the writing code here
-        g_Log(logLevelWarn, "Dummy Container Plugin :: Write Video of %ld for track %d: pts: %lld, dts: %lld, duration: %f", bufSize, p_TrackIdx, pts, dts, duration);
+        //g_Log(logLevelWarn, "Dummy Container Plugin :: Write Video of %ld for track %d: pts: %lld, dts: %lld, duration: %f", bufSize, p_TrackIdx, pts, dts, duration);
         // Write the encoded data to the output file
         AVPacket packet;
         av_init_packet(&packet);

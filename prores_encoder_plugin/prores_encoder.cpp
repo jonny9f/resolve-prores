@@ -478,10 +478,8 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
             return errNoParam;
         }
 
-        g_Log(logLevelInfo, "X264 Plugin :: PTS %ld", pts );
+        //g_Log(logLevelInfo, "X264 Plugin :: PTS %ld", pts );
 
-
-        const uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
 
         // Initialize a packet for holding the encoded data
         AVPacket packet;
@@ -491,8 +489,9 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         
         // Create a frame for encoding
         AVFrame* frame = av_frame_alloc();
-        if (!frame) {
-            g_Log(logLevelError, "Could not allocate frame" );
+        if (!frame) 
+        {
+          g_Log(logLevelError, "Could not allocate frame" );
           return errFail;
         }
 
@@ -504,16 +503,16 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         frame->pts = int64_t(pts * (90000./ framerate) );
 
 
-        g_Log(logLevelError, "PTS %ld", frame->pts );;
+        //g_Log(logLevelError, "PTS %ld", frame->pts );
 
 
           // Allocate memory for the frame data
         if (av_frame_get_buffer(frame, 0) < 0) {
           g_Log(logLevelError, "Could not allocate frame data" );
-            return errFail;
+          return errFail;
         }
 
-        pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+        uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
 
 
         for (int y = 0; y < height; ++y)
