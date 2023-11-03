@@ -10,14 +10,14 @@ extern "C" {
 using namespace IOPlugin;
 
 
-class DummyTrackWriter;
-class DummyContainer : public IPluginContainerRef
+class MovTrackWriter;
+class MovContainer : public IPluginContainerRef
 {
 public:
     static const uint8_t s_UUID[];
 
 public:
-    DummyContainer();
+    MovContainer();
 
     static StatusCode s_Register(HostListRef* p_pList);
 
@@ -33,9 +33,9 @@ protected:
     virtual StatusCode DoClose();
 
 protected:
-    virtual ~DummyContainer();
-    std::vector<DummyTrackWriter*> m_VideoTrackVec;
-    std::vector<DummyTrackWriter*> m_AudioTrackVec;
+    virtual ~MovContainer();
+    std::vector<MovTrackWriter*> m_VideoTrackVec;
+    std::vector<MovTrackWriter*> m_AudioTrackVec;
 
     AVStream* m_outStream;
     AVFormatContext* m_outFormatContext;

@@ -402,10 +402,10 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
 
     codecInfo.SetProperty(pIOPropUUID, propTypeUInt8, ProResEncoder::s_UUID, 16);
 
-    const char* pCodecName = "x264 Plugin";
+    const char* pCodecName = "ProRes";
     codecInfo.SetProperty(pIOPropName, propTypeString, pCodecName, strlen(pCodecName));
 
-    const char* pCodecGroup = "Plugin XXX";
+    const char* pCodecGroup = "ProRes";
     codecInfo.SetProperty(pIOPropGroup, propTypeString, pCodecGroup, strlen(pCodecGroup));
 
     uint32_t val = 'avc1';

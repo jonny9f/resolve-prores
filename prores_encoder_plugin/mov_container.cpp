@@ -8,24 +8,24 @@
 using namespace IOPlugin;
 
 // NOTE: When creating a plugin for release, please generate a new Container UUID in order to prevent conflicts with other third-party plugins.
-const uint8_t DummyContainer::s_UUID[] = { 0xad, 0x90, 0x3d, 0x57, 0x02, 0xf2, 0x4a, 0xc1, 0x9d, 0xde, 0x8f, 0xac, 0xa3, 0x48, 0x80, 0x51 };
+const uint8_t MovContainer::s_UUID[] = { 0xad, 0x90, 0x3d, 0x57, 0x02, 0xf2, 0x4a, 0xc1, 0x9d, 0xde, 0x8f, 0xac, 0xa3, 0x48, 0x80, 0x51 };
 
 
-class DummyTrackWriter : public IPluginTrackBase, public IPluginTrackWriter
+class MovTrackWriter : public IPluginTrackBase, public IPluginTrackWriter
 {
 public:
-    DummyTrackWriter(DummyContainer* p_pContainer, uint32_t p_TrackIdx, bool p_IsVideo)
+    MovTrackWriter(MovContainer* p_pContainer, uint32_t p_TrackIdx, bool p_IsVideo)
         : IPluginTrackBase(p_pContainer)
         , m_TrackIdx(p_TrackIdx)
         , m_IsVideo(p_IsVideo)
     {
     }
-    virtual ~DummyTrackWriter() = default;
+    virtual ~MovTrackWriter() = default;
 
 public:
     virtual StatusCode DoWrite(HostBufferRef* p_pBuf)
     {
-        DummyContainer* pContainer = dynamic_cast<DummyContainer*>(m_pContainer);
+        MovContainer* pContainer = dynamic_cast<MovContainer*>(m_pContainer);
         assert(pContainer != NULL);
 
 
@@ -37,7 +37,7 @@ private:
     bool m_IsVideo;
 };
 
-StatusCode DummyContainer::s_Register(HostListRef* p_pList)
+StatusCode MovContainer::s_Register(HostListRef* p_pList)
 {
     HostPropertyCollectionRef containerInfo;
     if (!containerInfo.IsValid())
@@ -45,9 +45,9 @@ StatusCode DummyContainer::s_Register(HostListRef* p_pList)
         return errAlloc;
     }
 
-    containerInfo.SetProperty(pIOPropUUID, propTypeUInt8, DummyContainer::s_UUID, 16);
+    containerInfo.SetProperty(pIOPropUUID, propTypeUInt8, MovContainer::s_UUID, 16);
 
-    const char* pContainerName = "Dummy Container";
+    const char* pContainerName = "Mov (ffmpeg)";
     containerInfo.SetProperty(pIOPropName, propTypeString, pContainerName, strlen(pContainerName));
 
     const uint32_t mediaType = (mediaAudio | mediaVideo);
@@ -64,20 +64,20 @@ StatusCode DummyContainer::s_Register(HostListRef* p_pList)
     return errNone;
 }
 
-DummyContainer::DummyContainer() : m_outFormatContext(0), m_outStream(0)
+MovContainer::MovContainer() : m_outFormatContext(0), m_outStream(0)
 {
 }
 
-DummyContainer::~DummyContainer()
+MovContainer::~MovContainer()
 {
 }
 
-StatusCode DummyContainer::DoInit(HostPropertyCollectionRef* p_pProps)
+StatusCode MovContainer::DoInit(HostPropertyCollectionRef* p_pProps)
 {
     return errNone;
 }
 
-StatusCode DummyContainer::DoOpen(HostPropertyCollectionRef* p_pProps)
+StatusCode MovContainer::DoOpen(HostPropertyCollectionRef* p_pProps)
 {
     std::string path;
     p_pProps->GetString(pIOPropPath, path);
@@ -90,7 +90,7 @@ StatusCode DummyContainer::DoOpen(HostPropertyCollectionRef* p_pProps)
     return errNone;
 }
 
-StatusCode DummyContainer::DoAddTrack(HostPropertyCollectionRef* p_pProps, HostPropertyCollectionRef* p_pCodecProps, IPluginTrackBase** p_pTrack)
+StatusCode MovContainer::DoAddTrack(HostPropertyCollectionRef* p_pProps, HostPropertyCollectionRef* p_pCodecProps, IPluginTrackBase** p_pTrack)
 {
 
     g_Log(logLevelWarn, "Dummy Container Plugin :: DoAddTrack ");
@@ -253,7 +253,7 @@ StatusCode DummyContainer::DoAddTrack(HostPropertyCollectionRef* p_pProps, HostP
         p_pProps->GetUINT32(pIOPropAudioChannelLayout, channelLayout);
     }
 
-    DummyTrackWriter* pTrack = new DummyTrackWriter(this, isVideo ? m_VideoTrackVec.size() : m_AudioTrackVec.size(), isVideo);
+    MovTrackWriter* pTrack = new MovTrackWriter(this, isVideo ? m_VideoTrackVec.size() : m_AudioTrackVec.size(), isVideo);
     pTrack->Retain();
 
     *p_pTrack = pTrack;
@@ -268,7 +268,7 @@ StatusCode DummyContainer::DoAddTrack(HostPropertyCollectionRef* p_pProps, HostP
     return errNone;
 }
 
-StatusCode DummyContainer::DoClose()
+StatusCode MovContainer::DoClose()
 {
     // release all tracks and dereferencing the container
 
@@ -293,7 +293,7 @@ StatusCode DummyContainer::DoClose()
     return errNone;
 }
 
-StatusCode DummyContainer::WriteVideo(uint32_t p_TrackIdx, HostBufferRef* p_pBuf)
+StatusCode MovContainer::WriteVideo(uint32_t p_TrackIdx, HostBufferRef* p_pBuf)
 {
     if (p_pBuf == NULL)
     {
@@ -341,7 +341,7 @@ StatusCode DummyContainer::WriteVideo(uint32_t p_TrackIdx, HostBufferRef* p_pBuf
     return errNone;
 }
 
-StatusCode DummyContainer::WriteAudio(uint32_t p_TrackIdx, HostBufferRef* p_pBuf)
+StatusCode MovContainer::WriteAudio(uint32_t p_TrackIdx, HostBufferRef* p_pBuf)
 {
     if (p_pBuf == NULL)
     {

@@ -18,7 +18,7 @@ StatusCode g_HandleGetInfo(HostPropertyCollectionRef* p_pProps)
     StatusCode err = p_pProps->SetProperty(pIOPropUUID, propTypeUInt8, pMyUUID, 16);
     if (err == errNone)
     {
-        err = p_pProps->SetProperty(pIOPropName, propTypeString, "Sample Plugin", strlen("Sample Plugin"));
+        err = p_pProps->SetProperty(pIOPropName, propTypeString, "ffmpeg Plugin", strlen("ffmpeg Plugin"));
     }
 
     return err;
@@ -31,9 +31,9 @@ StatusCode g_HandleCreateObj(unsigned char* p_pUUID, ObjectRef* p_ppObj)
         *p_ppObj = new ProResEncoder();
         return errNone;
     }
-    else if (memcmp(p_pUUID, DummyContainer::s_UUID, 16) == 0)
+    else if (memcmp(p_pUUID, MovContainer::s_UUID, 16) == 0)
     {
-        *p_ppObj = new DummyContainer();
+        *p_ppObj = new MovContainer();
         return errNone;
     }
     else if (memcmp(p_pUUID, AudioEncoder::s_UUID, 16) == 0)
@@ -77,10 +77,7 @@ StatusCode g_ListCodecs(HostListRef* p_pList)
 
 StatusCode g_ListContainers(HostListRef* p_pList)
 {
-    //return errNone;
-
-    // Register dummy container if you want to try it, which only prints to the log without exporting any real file
-    return DummyContainer::s_Register(p_pList);
+    return MovContainer::s_Register(p_pList);
 }
 
 StatusCode g_GetEncoderSettings(unsigned char* p_pUUID, HostPropertyCollectionRef* p_pValues, HostListRef* p_pSettingsList)
