@@ -10,10 +10,10 @@
 
 #include "x264.h"
 
-// NOTE: When creating a plugin for release, please generate a new Codec UUID in order to prevent conflicts with other third-party plugins.
-
-// 71403ba6-7a34-11ee-8cf8-7f2a35e28b49
 const uint8_t ProResEncoder::s_UUID[] = { 0x71, 0x40, 0x3b, 0xa6, 0x7a, 0x34, 0x11, 0xee, 0x8c, 0xf8, 0x7f, 0x2a, 0x35, 0xe2, 0x8b, 0x49 };
+
+static const char * const prores_profile_names[] = { "Proxy", "LT", "422", "422 HQ", "4444", "4444 XQ", 0 };
+
 
 class UISettingsController
 {
@@ -43,15 +43,8 @@ public:
             return;
         }
 
-        p_pValues->GetINT32("x264_enc_preset", m_EncPreset);
-        p_pValues->GetINT32("x264_tune", m_Tune);
-        p_pValues->GetINT32("x264_profile", m_Profile);
-
-        p_pValues->GetINT32("x264_num_passes", m_NumPasses);
-        p_pValues->GetINT32("x264_q_mode", m_QualityMode);
-        p_pValues->GetINT32("x264_qp", m_QP);
-        p_pValues->GetINT32("x264_bitrate", m_BitRate);
-        p_pValues->GetString("x264_enc_markers", m_MarkerColor);
+        p_pValues->GetINT32("prores_profile", m_Profile);
+        //p_pValues->GetINT32("x264_bitrate", m_BitRate);
     }
 
     StatusCode Render(HostListRef* p_pSettingsList)
@@ -95,13 +88,8 @@ public:
 private:
     void InitDefaults()
     {
-        m_EncPreset = 1;
-        m_Tune = 1;
-        m_Profile = 0;
-        m_NumPasses = 1;
-        m_QualityMode = X264_RC_CQP;
-        m_QP = 25;
-        m_BitRate = 0;
+        m_Profile = 2;
+        //m_BitRate = 0;
     }
 
     StatusCode RenderGeneral(HostListRef* p_pSettingsList)
@@ -118,88 +106,22 @@ private:
             }
         }
 
-        // Markers selection
-        if (m_CommonProps.GetContainer().size() >= 32)
-        {
-            // plugin container in string "plugin_UUID:container_UUID" or "container_UUID" with UUID 32 characters
-            // or "mov", "mp4" etc if non-plugin container
-            HostUIConfigEntryRef item("x264_enc_markers");
-            item.MakeMarkerColorSelector("Chapter Marker", "Marker 1", m_MarkerColor);
-            if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
-            {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate encoder preset UI entry");
-                assert(false);
-                return errFail;
-            }
-        }
-
-        // Preset combobox
-        {
-            HostUIConfigEntryRef item("x264_enc_preset");
-
-            std::vector<std::string> textsVec;
-            std::vector<int> valuesVec;
-
-            int32_t curVal = 1;
-            const char* const* pPresets = x264_preset_names;
-            while (*pPresets != 0)
-            {
-                valuesVec.push_back(curVal++);
-                textsVec.push_back(*pPresets);
-                ++pPresets;
-            }
-
-            item.MakeComboBox("Encoder Preset", textsVec, valuesVec, m_EncPreset);
-            if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
-            {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate encoder preset UI entry");
-                return errFail;
-            }
-        }
-
-        // Tune combobox
-        {
-            HostUIConfigEntryRef item("x264_tune");
-
-            std::vector<std::string> textsVec;
-            std::vector<int> valuesVec;
-
-            int32_t curVal = 1;
-            const char* const* pPresets = x264_tune_names;
-            while (*pPresets != 0)
-            {
-                valuesVec.push_back(curVal++);
-                textsVec.push_back(*pPresets);
-                ++pPresets;
-            }
-
-            item.MakeComboBox("Tune", textsVec, valuesVec, m_Tune);
-            if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
-            {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate tune UI entry");
-                return errFail;
-            }
-        }
-
         // Profile combobox
         {
-            HostUIConfigEntryRef item("x264_profile");
+            HostUIConfigEntryRef item("prores_profile");
 
             std::vector<std::string> textsVec;
             std::vector<int> valuesVec;
 
-            textsVec.push_back("Auto");
-            valuesVec.push_back(3);
-            textsVec.push_back("Baseline");
-            valuesVec.push_back(1);
-            textsVec.push_back("Main");
-            valuesVec.push_back(2);
-            textsVec.push_back("High");
-            valuesVec.push_back(3);
-            textsVec.push_back("High 422");
-            valuesVec.push_back(4);
+            int count = 0;
+            while( prores_profile_names[count] != 0 )
+            {
+                textsVec.push_back(prores_profile_names[count]);
+                valuesVec.push_back(count);
+                count++;
+            }
 
-            item.MakeComboBox("h264 Profile", textsVec, valuesVec, m_Profile);
+            item.MakeComboBox("profile", textsVec, valuesVec, m_Profile);
             if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
             {
                 g_Log(logLevelError, "X264 Plugin :: Failed to populate profile UI entry");
@@ -224,161 +146,39 @@ private:
             }
         }
 
-        {
-            HostUIConfigEntryRef item("x264_num_passes");
+        // {
+        //     HostUIConfigEntryRef item("x264_bitrate");
+        //     item.MakeSlider("Bit Rate", "KBps", m_BitRate, 100, 3000, 1);
 
-            std::vector<std::string> textsVec;
-            std::vector<int> valuesVec;
 
-            textsVec.push_back("1-Pass");
-            valuesVec.push_back(1);
-            textsVec.push_back("2-Pass");
-            valuesVec.push_back(2);
-
-            item.MakeComboBox("Passes", textsVec, valuesVec, m_NumPasses);
-            item.SetTriggersUpdate(true);
-            if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
-            {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate passes UI entry");
-                return errFail;
-            }
-        }
-
-        if (m_NumPasses < 2)
-        {
-            HostUIConfigEntryRef item("x264_q_mode");
-
-            std::vector<std::string> textsVec;
-            std::vector<int> valuesVec;
-
-            textsVec.push_back("Constant Quality");
-            valuesVec.push_back(X264_RC_CQP);
-            textsVec.push_back("Constant Rate Factor");
-            valuesVec.push_back(X264_RC_CRF);
-
-            textsVec.push_back("Variable Rate");
-            valuesVec.push_back(X264_RC_ABR);
-
-            item.MakeRadioBox("Quality Control", textsVec, valuesVec, GetQualityMode());
-            item.SetTriggersUpdate(true);
-
-            if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
-            {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate quality UI entry");
-                return errFail;
-            }
-        }
-
-        {
-            HostUIConfigEntryRef item("x264_qp");
-            const char* pLabel = NULL;
-            if (m_QP < 17)
-            {
-                pLabel = "(high)";
-            }
-            else if (m_QP < 34)
-            {
-                pLabel = "(medium)";
-            }
-            else
-            {
-                pLabel = "(low)";
-            }
-            item.MakeSlider("Factor", pLabel, m_QP, 1, 51, 25);
-            item.SetTriggersUpdate(true);
-            item.SetHidden((m_QualityMode == X264_RC_ABR) || (m_NumPasses > 1));
-            if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
-            {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate qp slider UI entry");
-                return errFail;
-            }
-        }
-
-        {
-            HostUIConfigEntryRef item("x264_bitrate");
-            item.MakeSlider("Bit Rate", "KBps", m_BitRate, 100, 3000, 1);
-            item.SetHidden((m_QualityMode != X264_RC_ABR) && (m_NumPasses < 2));
-
-            if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
-            {
-                g_Log(logLevelError, "X264 Plugin :: Failed to populate bitrate slider UI entry");
-                return errFail;
-            }
-        }
+        //     if (!item.IsSuccess() || !p_pSettingsList->Append(&item))
+        //     {
+        //         g_Log(logLevelError, "X264 Plugin :: Failed to populate bitrate slider UI entry");
+        //         return errFail;
+        //     }
+        // }
 
         return errNone;
     }
 
 public:
-    int32_t GetNumPasses()
+
+    int32_t GetProfile() const
     {
-        return m_NumPasses;
+        return m_Profile;
     }
 
-    const char* GetEncPreset() const
-    {
-        return x264_preset_names[m_EncPreset];
-    }
+    // int32_t GetBitRate() const
+    // {
+    //     return m_BitRate * 8;
+    // }
 
-    const char* GetTune() const
-    {
-        return x264_tune_names[m_Tune];
-    }
 
-    const char* GetProfile() const
-    {
-        const char* pProfile = NULL;
-        switch (m_Profile)
-        {
-            case 1:
-                pProfile = x264_profile_names[0];
-                break;
-            case 2:
-                pProfile = x264_profile_names[1];
-                break;
-            case 3:
-                pProfile = x264_profile_names[2];
-                break;
-            case 4:
-                pProfile = x264_profile_names[4];
-            default:
-                break;
-        }
-
-        return pProfile;
-    }
-
-    int32_t GetQualityMode() const
-    {
-        return (m_NumPasses == 2) ? X264_RC_ABR : m_QualityMode;
-    }
-
-    int32_t GetQP() const
-    {
-        return std::max<int>(0, m_QP);
-    }
-
-    int32_t GetBitRate() const
-    {
-        return m_BitRate * 8;
-    }
-
-    const std::string& GetMarkerColor() const
-    {
-        return m_MarkerColor;
-    }
 
 private:
     HostCodecConfigCommon m_CommonProps;
-    std::string m_MarkerColor;
-    int32_t m_EncPreset;
-    int32_t m_Tune;
     int32_t m_Profile;
-
-    int32_t m_NumPasses;
-    int32_t m_QualityMode;
-    int32_t m_QP;
-    int32_t m_BitRate;
+    //int32_t m_BitRate;
 };
 
 StatusCode ProResEncoder::s_GetEncoderSettings(HostPropertyCollectionRef* p_pValues, HostListRef* p_pSettingsList)
@@ -559,7 +359,7 @@ void ProResEncoder::OpenAV()
     // Set codec parameters (e.g., width, height, bitrate, etc.)
     m_codecContext->width = width;
     m_codecContext->height = height;
-    m_codecContext->bit_rate = 5000000;
+    m_codecContext->profile = m_profile;
     m_codecContext->codec_id = AV_CODEC_ID_PRORES;
     m_codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
     m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
@@ -596,18 +396,13 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
     
     m_CommonProps.Load(p_pBuff);
 
-    OpenAV();
-
-    const char* pProfile = m_pSettings->GetProfile();
-    if (strcmp(pProfile, "baseline") != 0)
-    {
-        // const uint8_t fieldOrder = m_CommonProps.GetFieldOrder();
-        // param.b_interlaced = ((fieldOrder == fieldTop) || (fieldOrder == fieldBottom));
-    }
-
     m_pSettings.reset(new UISettingsController(m_CommonProps));
     m_pSettings->Load(p_pBuff);
+    m_profile = m_pSettings->GetProfile();
 
+    OpenAV();
+
+    
     uint64_t val = reinterpret_cast<uint64_t>(m_codec);
     StatusCode res = p_pBuff->SetProperty( pIOPropAVCodec, propTypeUInt64, reinterpret_cast<const void*>(&val), 1 );    
     if (res != errNone)
@@ -623,6 +418,7 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
         g_Log(logLevelError,"Failed to set codec context" );
         return res;
     }
+
 
     return errNone;
 }

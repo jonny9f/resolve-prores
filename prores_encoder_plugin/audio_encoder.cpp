@@ -3,8 +3,6 @@
 #include "mov_container.h"
 
 
-// NOTE: When creating a plugin for release, please generate a new Codec UUID in order to prevent conflicts with other third-party plugins.
-// ad903d5702f24ac19dde8faca3488051
 const uint8_t AudioEncoder::s_UUID[] = { 0xad, 0x90, 0x3d, 0x57, 0x02, 0xf2, 0x4a, 0xc1, 0x9d, 0xde, 0x8f, 0xac, 0xa3, 0x48, 0x80, 0x51 };
 
 

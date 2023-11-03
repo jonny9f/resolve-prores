@@ -56,4 +56,6 @@ private:
     HostCodecConfigCommon m_CommonProps;
 
     StatusCode m_Error;
+
+    uint32_t m_profile;
 };
