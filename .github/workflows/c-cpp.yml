@@ -2,9 +2,9 @@ name: C/C++ CI
 
 on: 
   push:
-    branches: [ "deploy" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "deploy" ]
+    branches: [ "main" ]
 
   workflow_dispatch:
 
@@ -17,6 +17,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: make
+      working-directory: prores_encoder_plugin
       run: make
     - name: make install
+      working-directory: prores_encoder_plugin
       run: make install
