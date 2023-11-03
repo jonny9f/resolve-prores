@@ -6,7 +6,7 @@ BUILD_DIR = .
 SUBDIRS = wrapper
 X264_DIR = /home/jon/dev/resolve/build/
 
-CFLAGS +=  -g -fPIC -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-but-set-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-parameter -Wno-unused-result -Wno-unused-result 
+CFLAGS +=  -g -fPIC -Wall -Wextra 
 
 ifeq ($(OS_TYPE), Linux)
 LDFLAGS = -shared '-Wl,-rpath,$$ORIGIN' -Wl,-z,origin -lpthread  
