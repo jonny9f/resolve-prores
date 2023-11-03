@@ -233,7 +233,7 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     codecInfo.SetProperty(pIOPropHSubsampling, propTypeUInt8, &hSampling, 1);
     codecInfo.SetProperty(pIOPropVSubsampling, propTypeUInt8, &vSampling, 1);
 
-    val = 8;
+    val = 16;
     codecInfo.SetProperty(pIOPropBitDepth, propTypeUInt32, &val, 1);
     codecInfo.SetProperty(pIOPropBitsPerSample, propTypeUInt32, &val, 1);
 
@@ -511,7 +511,7 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
           return errFail;
         }
 
-        uint8_t* pSrc = reinterpret_cast<uint8_t*>(const_cast<char*>(pBuf));
+        uint16_t* pSrc = reinterpret_cast<uint16_t*>(const_cast<char*>(pBuf));
 
 
         for (int y = 0; y < height; ++y)
@@ -522,11 +522,11 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
 
             for (int x = 0; x < width; x += 2)
             {
-                // scale 8 bit to 10 bit
-                row[x] = pSrc[1] << 2;
-                row[x + 1] = pSrc[3] << 2;
-                rowU[x/2] = pSrc[0] << 2;
-                rowV[x/2] = pSrc[2] << 2;
+                
+                row[x] = pSrc[1] >> 6;
+                row[x + 1] = pSrc[3] >> 6;
+                rowU[x/2] = pSrc[0] >> 6;
+                rowV[x/2] = pSrc[2] >> 6;
                 pSrc += 4;
             }
         }

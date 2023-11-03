@@ -242,10 +242,10 @@ StatusCode MovContainer::DoAddTrack(HostPropertyCollectionRef* p_pProps, HostPro
         uint32_t numChannels = 0;
         p_pProps->GetUINT32(pIOPropNumChannels, numChannels);
 
-        uint32_t bitDepth = 0; // storage depth
+        uint32_t bitDepth = 16; // storage depth
         p_pProps->GetUINT32(pIOPropBitDepth, bitDepth);
 
-        uint32_t dataBitDepth = 0; // data bit depth - less or equal to storage depth, currently shall be equal
+        uint32_t dataBitDepth = 16; // data bit depth - less or equal to storage depth, currently shall be equal
         p_pProps->GetUINT32(pIOPropBitsPerSample, dataBitDepth);
 
         uint8_t isFloat = 0; // 0 - integer data, 1 - floating point data
