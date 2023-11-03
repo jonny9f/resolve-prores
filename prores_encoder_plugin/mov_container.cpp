@@ -49,7 +49,7 @@ StatusCode MovContainer::s_Register(HostListRef* p_pList)
 
     containerInfo.SetProperty(pIOPropUUID, propTypeUInt8, MovContainer::s_UUID, 16);
 
-    const char* pContainerName = "Mov (ffmpeg)";
+    const char* pContainerName = "QuickTime (ffmpeg)";
     containerInfo.SetProperty(pIOPropName, propTypeString, pContainerName, strlen(pContainerName));
 
     const uint32_t mediaType = (mediaAudio | mediaVideo);

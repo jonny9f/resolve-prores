@@ -6,13 +6,15 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <thread>
 #include "prores_props.h"
+
 
 #include "x264.h"
 
 const uint8_t ProResEncoder::s_UUID[] = { 0x71, 0x40, 0x3b, 0xa6, 0x7a, 0x34, 0x11, 0xee, 0x8c, 0xf8, 0x7f, 0x2a, 0x35, 0xe2, 0x8b, 0x49 };
 
-static const char * const prores_profile_names[] = { "Proxy", "LT", "422", "422 HQ", "4444", "4444 XQ", 0 };
+static const char * const prores_profile_names[] = { "422 Proxy", "422 LT", "422", "422 HQ", "4444", "4444 XQ", 0 };
 
 
 class UISettingsController
@@ -357,13 +359,14 @@ void ProResEncoder::OpenAV()
     g_Log(logLevelInfo, "image %dx%d", width, height);
 
     // Set codec parameters (e.g., width, height, bitrate, etc.)
+
     m_codecContext->width = width;
     m_codecContext->height = height;
     m_codecContext->profile = m_profile;
     m_codecContext->codec_id = AV_CODEC_ID_PRORES;
     m_codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
     m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
-    m_codecContext->thread_count = 16;
+    m_codecContext->thread_count = std::thread::hardware_concurrency();
     m_codecContext->framerate.num = m_CommonProps.GetFrameRateNum();
     m_codecContext->framerate.den = m_CommonProps.GetFrameRateDen();
     m_codecContext->time_base.num =  m_codecContext->framerate.den;
