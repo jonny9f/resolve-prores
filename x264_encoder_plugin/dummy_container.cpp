@@ -327,6 +327,10 @@ StatusCode DummyContainer::WriteVideo(uint32_t p_TrackIdx, HostBufferRef* p_pBuf
         av_init_packet(&packet);
         av_packet_from_data(&packet, reinterpret_cast<uint8_t*>(pBuf), bufSize);
 
+        packet.pts = pts;
+        packet.dts = dts;
+        packet.flags = AV_PKT_FLAG_KEY;
+
         if (av_write_frame(m_outFormatContext, &packet) < 0) {
           g_Log(logLevelError, "error writing");
         }

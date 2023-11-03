@@ -37,7 +37,7 @@ int main() {
     }
 
     // Set codec parameters (e.g., width, height, bitrate, etc.)
-
+    int framerate = 25;
     codecContext->width = 1920;
     codecContext->height = 1080;
     codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;

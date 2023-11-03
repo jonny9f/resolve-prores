@@ -562,7 +562,6 @@ void ProResEncoder::OpenAV()
 
     int width = m_CommonProps.GetWidth();
     int height = m_CommonProps.GetHeight();
-    int framerate = m_CommonProps.GetFrameRateNum();
 
     // Find the ProRes codec
     m_codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
@@ -588,9 +587,11 @@ void ProResEncoder::OpenAV()
     m_codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
     m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
     m_codecContext->thread_count = 16;
-    m_codecContext->time_base = (AVRational){1, framerate};
-    m_codecContext->framerate = (AVRational){framerate, 1};
-  
+    m_codecContext->framerate.num = m_CommonProps.GetFrameRateNum();
+    m_codecContext->framerate.den = m_CommonProps.GetFrameRateDen();
+    m_codecContext->time_base.num =  m_codecContext->framerate.den;
+    m_codecContext->time_base.den =  m_codecContext->framerate.num;
+    
 
     if (avcodec_open2(m_codecContext, m_codec, nullptr) < 0) {
         g_Log(logLevelError, "Could not open codec");
@@ -928,7 +929,7 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
             av_init_packet(&packet);
             packet.data = nullptr;
             packet.size = 0;
-
+            
             // Create a frame for encoding
             AVFrame* frame = av_frame_alloc();
             if (!frame) {
@@ -937,12 +938,12 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
             }
 
               // Initialize the frame parameters
-            int framerate = m_CommonProps.GetFrameRateNum();
+            float framerate = (float)m_codecContext->framerate.num / (float)m_codecContext->framerate.den;
             frame->format = AV_PIX_FMT_YUV422P10;
             frame->width =  m_codecContext->width;
-            frame->height =  m_codecContext->height;
+            frame->height =  m_codecContext->height;            
+            frame->pts = int64_t(pts * (90000./ framerate) );
 
-            frame->pts = pts * 90000/framerate;
 
             g_Log(logLevelError, "PTS %ld", frame->pts );;
 
@@ -1012,9 +1013,11 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
 
                 memcpy(pOutBuf, packet.data, bytes );
 
-                int64_t ts = frame->pts ;
-                outBuf.SetProperty(pIOPropPTS, propTypeInt64, &ts , 1);
-                outBuf.SetProperty(pIOPropDTS, propTypeInt64, &ts , 1);
+                int64_t packet_pts = packet.pts;
+                int64_t packet_dts = packet.dts;
+
+                outBuf.SetProperty(pIOPropPTS, propTypeInt64, &packet_pts , 1);
+                outBuf.SetProperty(pIOPropDTS, propTypeInt64, &packet_dts , 1);
                 m_pCallback->SendOutput(&outBuf);
 
                 av_packet_unref(&packet);
