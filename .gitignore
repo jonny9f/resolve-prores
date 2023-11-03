@@ -6,7 +6,6 @@ x264
 .vscode/settings.json
 EncTest/output.mov
 EncTest/prores_encoder
-x264_encoder_plugin/bin/x264_encoder_plugin.dvcp
-x264_encoder_plugin/bin/x264_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/x264_encoder_plugin.dvcp
-x264_encoder_plugin/bin/x264_encoder_plugin.dvcp.bundle/Linux-x86-64/x264_encoder_plugin.dvcp
-EncTest/output.mov
+x264_encoder_plugin/bin/
+*.mov
+*.mp4
