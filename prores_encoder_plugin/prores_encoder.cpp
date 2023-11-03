@@ -450,8 +450,6 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     // just create a dummy passthrough codec which will pass the buffer for output unchanged
     // but if nothing extraordinary is required let Resolve trigger the codec encode function and pass the output buffer to the writer
     std::vector<std::string> containerVec;
-    containerVec.push_back("mp4");
-    containerVec.push_back("mov");
     containerVec.push_back("ad903d5702f24ac19dde8faca3488051");
     std::string valStrings;
     for (size_t i = 0; i < containerVec.size(); ++i)
