@@ -1,8 +1,12 @@
 #include <memory>
 #include "audio_encoder.h"
+#include "mov_container.h"
+
 
 // NOTE: When creating a plugin for release, please generate a new Codec UUID in order to prevent conflicts with other third-party plugins.
-const uint8_t AudioEncoder::s_UUID[] = { 0x6a, 0x88, 0xe8, 0x41, 0xd8, 0xe4, 0x41, 0x4b, 0x87, 0x9e, 0xa4, 0x80, 0xfc, 0x90, 0xda, 0xb5 };
+// ad903d5702f24ac19dde8faca3488051
+const uint8_t AudioEncoder::s_UUID[] = { 0xad, 0x90, 0x3d, 0x57, 0x02, 0xf2, 0x4a, 0xc1, 0x9d, 0xde, 0x8f, 0xac, 0xa3, 0x48, 0x80, 0x51 };
+
 
 class UIAudioSettingsController
 {
@@ -85,7 +89,7 @@ StatusCode AudioEncoder::s_RegisterCodecs(HostListRef* p_pList)
 
     std::vector<std::string> containerVec;
 
-    containerVec.push_back("ad903d5702f24ac19dde8faca3488051");
+    containerVec.push_back( MovContainer::s_UUIDStr );
     std::string valStrings;
     for (size_t i = 0; i < containerVec.size(); ++i)
     {

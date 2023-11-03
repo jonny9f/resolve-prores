@@ -15,6 +15,7 @@ class MovContainer : public IPluginContainerRef
 {
 public:
     static const uint8_t s_UUID[];
+    static const char* s_UUIDStr;
 
 public:
     MovContainer();

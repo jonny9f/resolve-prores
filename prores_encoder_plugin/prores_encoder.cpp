@@ -1,5 +1,5 @@
 #include "prores_encoder.h"
-
+#include "mov_container.h"
 #include <assert.h>
 #include <cstring>
 #include <vector>
@@ -11,8 +11,9 @@
 #include "x264.h"
 
 // NOTE: When creating a plugin for release, please generate a new Codec UUID in order to prevent conflicts with other third-party plugins.
-const uint8_t ProResEncoder::s_UUID[] = { 0x6a, 0x88, 0xe8, 0x41, 0xd8, 0xe4, 0x41, 0x4b, 0x87, 0x9e, 0xa4, 0x80, 0xfc, 0x90, 0xda, 0xb4 };
 
+// 71403ba6-7a34-11ee-8cf8-7f2a35e28b49
+const uint8_t ProResEncoder::s_UUID[] = { 0x71, 0x40, 0x3b, 0xa6, 0x7a, 0x34, 0x11, 0xee, 0x8c, 0xf8, 0x7f, 0x2a, 0x35, 0xe2, 0x8b, 0x49 };
 
 class UISettingsController
 {
@@ -448,7 +449,7 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     // just create a dummy passthrough codec which will pass the buffer for output unchanged
     // but if nothing extraordinary is required let Resolve trigger the codec encode function and pass the output buffer to the writer
     std::vector<std::string> containerVec;
-    containerVec.push_back("ad903d5702f24ac19dde8faca3488051");
+    containerVec.push_back( MovContainer::s_UUIDStr );
     std::string valStrings;
     for (size_t i = 0; i < containerVec.size(); ++i)
     {
