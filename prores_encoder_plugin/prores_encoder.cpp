@@ -478,8 +478,6 @@ ProResEncoder::ProResEncoder()
     , m_packet(0)
     , m_pContext(0)
     , m_ColorModel(-1)
-    , m_IsMultiPass(false)
-    , m_PassesDone(0)
     , m_Error(errNone)
 {
 
@@ -517,19 +515,8 @@ void ProResEncoder::DoFlush()
         sts = DoProcess(NULL);
     }
 
-    ++m_PassesDone;
 
-    if (!m_IsMultiPass || (m_PassesDone > 1))
-    {
-        // no need to do anything
-        return;
-    }
-
-    if (m_PassesDone == 1)
-    {
-        // setup new pass
-        SetupContext(true /* isFinalPass */);
-    }
+    return;
 }
 
 StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
@@ -651,7 +638,7 @@ void ProResEncoder::SetupContext(bool p_IsFinalPass)
     }
 
     param.rc.i_rc_method = m_pSettings->GetQualityMode();
-    if (!m_IsMultiPass && (param.rc.i_rc_method != X264_RC_ABR))
+    if ((param.rc.i_rc_method != X264_RC_ABR))
     {
         const int qp = m_pSettings->GetQP();
 
@@ -664,24 +651,6 @@ void ProResEncoder::SetupContext(bool p_IsFinalPass)
         param.rc.i_bitrate = m_pSettings->GetBitRate();
         param.rc.i_vbv_buffer_size = m_pSettings->GetBitRate();
         param.rc.i_vbv_max_bitrate = m_pSettings->GetBitRate();
-    }
-
-    if (m_IsMultiPass)
-    {
-        if (p_IsFinalPass && (m_PassesDone > 0))
-        {
-            param.rc.b_stat_read = 1;
-            param.rc.b_stat_write = 0;
-            x264_param_apply_fastfirstpass(&param);
-        }
-        else if (!p_IsFinalPass)
-        {
-            param.rc.b_stat_read = 0;
-            param.rc.b_stat_write = 1;
-        }
-
-        param.rc.psz_stat_out = &s_TmpFileName[0];
-        param.rc.psz_stat_in = &s_TmpFileName[0];
     }
 
     if (pProfile != NULL)
@@ -725,19 +694,6 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
     m_pSettings.reset(new UISettingsController(m_CommonProps));
     m_pSettings->Load(p_pBuff);
 
-    uint8_t isMultiPass = 0;
-    if (m_pSettings->GetNumPasses() == 2)
-    {
-        m_IsMultiPass = true;
-        isMultiPass = 1;
-    }
-
-    // @TODO: Need to fill maximum output size pIOPropInitFrameBytes if know or otherwise can be larger than an image
-    StatusCode sts = p_pBuff->SetProperty(pIOPropMultiPass, propTypeUInt8, &isMultiPass, 1);
-    if (sts != errNone)
-    {
-        return sts;
-    }
 
     // setup context for cookie
     SetupContext(true /* isFinalPass */);
@@ -793,16 +749,6 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
 
     uint32_t temporal = 2;
     p_pBuff->SetProperty(pIOPropTemporalReordering, propTypeUInt32, &temporal, 1);
-
-    if (isMultiPass)
-    {
-        SetupContext(false /* isFinalPass */);
-        if (m_Error != errNone)
-        {
-            return m_Error;
-        }
-    }
-
 
 
     return errNone;

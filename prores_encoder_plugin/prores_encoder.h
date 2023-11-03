@@ -34,18 +34,6 @@ public:
     static StatusCode s_RegisterCodecs(HostListRef* p_pList);
     static StatusCode s_GetEncoderSettings(HostPropertyCollectionRef* p_pValues, HostListRef* p_pSettingsList);
 
-    virtual bool IsNeedNextPass() override
-    {
-        return (m_IsMultiPass && (m_PassesDone < 2));
-    }
-
-    virtual bool IsAcceptingFrame(int64_t p_PTS) override
-    {
-        // accepts every frame in multipass, PTS is the frame number in track fps
-        // return false after all passes finished
-        return (m_IsMultiPass && (m_PassesDone < 3));
-    }
-
 protected:
     virtual void DoFlush() override;
     virtual StatusCode DoInit(HostPropertyCollectionRef* p_pProps) override;
@@ -70,7 +58,5 @@ private:
     std::unique_ptr<UISettingsController> m_pSettings;
     HostCodecConfigCommon m_CommonProps;
 
-    bool m_IsMultiPass;
-    uint32_t m_PassesDone;
     StatusCode m_Error;
 };
