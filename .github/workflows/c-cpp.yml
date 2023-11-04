@@ -33,4 +33,4 @@ jobs:
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-          files:  prores_encoder_plugin/bin/**
+          files:  prores_encoder_plugin/bin/release.zip
