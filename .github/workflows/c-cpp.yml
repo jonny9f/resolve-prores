@@ -32,8 +32,10 @@ jobs:
     - name: make dist
       working-directory: prores_encoder_plugin
       run: make dist
+    - name: Rename Binary with Tag Name
+      run: mv prores_encoder_plugin/bin/release.zip "release-${{ steps.tag.outputs.TAG_NAME }}.zip"
     - name: release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-          files:  prores_encoder_plugin/bin/release.zip
+          files:  release-${{ steps.tag.outputs.TAG_NAME }}.zip
