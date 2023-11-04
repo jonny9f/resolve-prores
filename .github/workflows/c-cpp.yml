@@ -26,4 +26,5 @@ jobs:
       run: make install
     - name: release
       uses: softprops/action-gh-release@v1
-      with files:  prores_encoder_plugin/bin/**
+      with:
+          files:  prores_encoder_plugin/bin/**
