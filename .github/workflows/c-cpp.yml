@@ -32,6 +32,8 @@ jobs:
     - name: make dist
       working-directory: prores_encoder_plugin
       run: make dist
+    - name: Set Tag Name
+      run: echo "::set-output name=TAG_NAME::$(echo $GITHUB_REF | awk -F / '{print $3}')"
     - name: Rename Binary with Tag Name
       run: mv prores_encoder_plugin/bin/release.zip "release-${{ steps.tag.outputs.TAG_NAME }}.zip"
     - name: release
