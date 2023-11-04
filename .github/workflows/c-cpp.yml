@@ -29,6 +29,9 @@ jobs:
     - name: make install
       working-directory: prores_encoder_plugin
       run: make install
+    - name: make dist
+      working-directory: prores_encoder_plugin
+      run: make dist
     - name: release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
