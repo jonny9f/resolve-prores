@@ -61,3 +61,5 @@ install: all
 	mkdir -p $(BINDIR)/prores_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
 	cp $(TARGET) $(BINDIR)/prores_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
 
+dist: install
+	cd $(BINDIR) && zip -r release.zip prores_encoder_plugin.dvcp.bundle
