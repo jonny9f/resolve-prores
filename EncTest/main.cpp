@@ -10,10 +10,10 @@ extern "C" {
 
 
 int main() {
-    //av_register_all();
+    av_register_all();
 
     // Initialize FFmpeg codecs and formats
-    //avcodec_register_all();
+    avcodec_register_all();
 
     // Create a new AVFormatContext to represent the output format
     AVFormatContext* outFormatContext = nullptr;
@@ -36,14 +36,19 @@ int main() {
         return -1;
     }
 
+    int profile = FF_PROFILE_PRORES_4444;
+    //int profile = FF_PROFILE_PRORES_STANDARD;
+    AVPixelFormat pix_fmt = profile >= FF_PROFILE_PRORES_4444 ? AV_PIX_FMT_YUV444P10 : AV_PIX_FMT_YUV422P10;
+    int hSampling = pix_fmt == AV_PIX_FMT_YUV444P10 ? 1 : 2;
+
     // Set codec parameters (e.g., width, height, bitrate, etc.)
     int framerate = 25;
     codecContext->width = 1920;
     codecContext->height = 1080;
-    codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
+    codecContext->profile = profile;
+    codecContext->pix_fmt = pix_fmt;
     codecContext->time_base = AVRational{1, framerate};
     codecContext->framerate = AVRational{framerate, 1};
-
 
     if (avcodec_open2(codecContext, codec, nullptr) < 0) {
         std::cerr << "Could not open codec" << std::endl;
@@ -59,8 +64,6 @@ int main() {
 
     // Copy the codec parameters to the output stream
     avcodec_parameters_from_context(outStream->codecpar, codecContext);
-
-
   
     // Open the output file
     if (avio_open(&outFormatContext->pb, "output.mov", AVIO_FLAG_WRITE) < 0) {
@@ -97,7 +100,7 @@ int main() {
 
   
     // Initialize the frame parameters
-    frame->format = AV_PIX_FMT_YUV422P10;
+    frame->format = pix_fmt;
     frame->width = 1920;
     frame->height = 1080;
 
@@ -122,50 +125,65 @@ int main() {
     for (int y = 0; y < height; y++) {
 
       uint16_t* row = (uint16_t*)(frame->data[0] + y * frame->linesize[0]);
-
-      //std::cout << 'Y' << frame->linesize[0] << std::endl;
-
-      // pointer to U
       uint16_t* rowU = (uint16_t*)(frame->data[1] + y * frame->linesize[1]);
-
-      //std::cout << 'U' << frame->linesize[1] << std::endl;
-      
-      // pointer to V
       uint16_t* rowV = (uint16_t*)(frame->data[2] + y * frame->linesize[2]);
-
-      //std::cout << 'V' << frame->linesize[2] << std::endl;
             
 
       uint16_t* row16bit = image10bit.ptr<uint16_t>(y);
 
-      for (int x = 0; x < width; x += 2) {
+      if ( hSampling == 1 ) {
+        for (int x = 0; x < width; x++) {
+          uint16_t* pixel1 = row16bit + x * 3;
+          uint16_t y1 = (pixel1[0] * 66 + pixel1[1] * 129 + pixel1[2] * 25 + 128) >> 8;
+          row[x] = y1;
 
-        // extract RGB
-        uint16_t* pixel1 = row16bit + x * 3;
-        uint16_t* pixel2 = row16bit + (x + 1) * 3;
+          float R_norm = static_cast<float>(pixel1[2]) / 1023.0;
+          float G_norm = static_cast<float>(pixel1[1]) / 1023.0;
+          float B_norm = static_cast<float>(pixel1[0]) / 1023.0;
 
-        uint16_t y1 = (pixel1[0] * 66 + pixel1[1] * 129 + pixel1[2] * 25 + 128) >> 8;
-        uint16_t y2 = (pixel2[0] * 66 + pixel2[1] * 129 + pixel2[2] * 25 + 128) >> 8;
 
-     
-        float R_norm = static_cast<float>(pixel1[2]) / 1023.0;
-        float G_norm = static_cast<float>(pixel1[1]) / 1023.0;
-        float B_norm = static_cast<float>(pixel1[0]) / 1023.0;
+          // Calculate YUV components
+          float Y = 0.299 * R_norm + 0.587 * G_norm + 0.114 * B_norm;
+          float U = (B_norm - Y) * 0.493;
+          float V = (R_norm - Y) * 0.877;
 
-        // Calculate YUV components
-        float Y = 0.299 * R_norm + 0.587 * G_norm + 0.114 * B_norm;
-        float U = (B_norm - Y) * 0.493;
-        float V = (R_norm - Y) * 0.877;
+          // Convert the YUV components back to 10-bit values (if needed)
+          uint16_t U_10bit = static_cast<uint16_t>((U + 0.5) * 1023);
+          uint16_t V_10bit = static_cast<uint16_t>((V + 0.5) * 1023);
 
-        // Convert the YUV components back to 10-bit values (if needed)
-        uint16_t U_10bit = static_cast<uint16_t>((U + 0.5) * 1023);
-        uint16_t V_10bit = static_cast<uint16_t>((V + 0.5) * 1023);
-        row[x] = y1; 
-        row[x + 1] = y2;
-        
-        rowU[x/2] = U_10bit;
-        rowV[x/2] = V_10bit;
+          rowU[x] = U_10bit;
+          rowV[x] = V_10bit;
+        }
+      } else {
 
+        for (int x = 0; x < width; x += 2) {
+
+          // extract RGB
+          uint16_t* pixel1 = row16bit + x * 3;
+          uint16_t* pixel2 = row16bit + (x + 1) * 3;
+
+          uint16_t y1 = (pixel1[0] * 66 + pixel1[1] * 129 + pixel1[2] * 25 + 128) >> 8;
+          uint16_t y2 = (pixel2[0] * 66 + pixel2[1] * 129 + pixel2[2] * 25 + 128) >> 8;
+
+      
+          float R_norm = static_cast<float>(pixel1[2]) / 1023.0;
+          float G_norm = static_cast<float>(pixel1[1]) / 1023.0;
+          float B_norm = static_cast<float>(pixel1[0]) / 1023.0;
+
+          // Calculate YUV components
+          float Y = 0.299 * R_norm + 0.587 * G_norm + 0.114 * B_norm;
+          float U = (B_norm - Y) * 0.493;
+          float V = (R_norm - Y) * 0.877;
+
+          // Convert the YUV components back to 10-bit values (if needed)
+          uint16_t U_10bit = static_cast<uint16_t>((U + 0.5) * 1023);
+          uint16_t V_10bit = static_cast<uint16_t>((V + 0.5) * 1023);
+          row[x] = y1; 
+          row[x + 1] = y2;
+          
+          rowU[x/2] = U_10bit;
+          rowV[x/2] = V_10bit;
+        }
       }
     }
 
