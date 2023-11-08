@@ -220,7 +220,7 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
     val = dirEncode;
     codecInfo.SetProperty(pIOPropCodecDirection, propTypeUInt32, &val, 1);
 
-    val = clrUYVY;
+    val = clrAYUV;
     codecInfo.SetProperty(pIOPropColorModel, propTypeUInt32, &val, 1);
 
     // Optionally enable both Data Ranges, Video will be default for "Auto" thus "0" value goes first
@@ -231,7 +231,11 @@ StatusCode ProResEncoder::s_RegisterCodecs(HostListRef* p_pList)
 
     uint8_t hSampling = 2;
     uint8_t vSampling = 1;
-    codecInfo.SetProperty(pIOPropHSubsampling, propTypeUInt8, &hSampling, 1);
+    std::vector<uint8_t> hSamplingVec;
+    hSamplingVec.push_back(1);
+    hSamplingVec.push_back(2);
+
+    codecInfo.SetProperty(pIOPropHSubsampling, propTypeUInt8, hSamplingVec.data(), hSamplingVec.size());
     codecInfo.SetProperty(pIOPropVSubsampling, propTypeUInt8, &vSampling, 1);
 
     val = 16;
@@ -317,20 +321,30 @@ StatusCode ProResEncoder::DoInit(HostPropertyCollectionRef* p_pProps)
 {
     // fill average frame size if have byte rate
     g_Log(logLevelInfo, "X264 Plugin :: DoInit");
-    uint32_t val = clrUYVY;
-    p_pProps->SetProperty(pIOPropColorModel, propTypeUInt32, &val, 1);
+    
+    UISettingsController settings;
+    settings.Load(p_pProps);
 
-    uint8_t hSampling = 2;
+    uint8_t hSampling = settings.GetProfile() >= FF_PROFILE_PRORES_4444 /*4444 and 4444 hq */ ? 1 : 2;
     uint8_t vSampling = 1;
-    p_pProps->SetProperty(pIOPropHSubsampling, propTypeUInt8, &hSampling, 1);
+    StatusCode res = p_pProps->SetProperty(pIOPropHSubsampling, propTypeUInt8, &vSampling, 1);
+    if (res != errNone)
+    {
+        g_Log(logLevelError,"Failed to set hSampling" );
+        return res;
+    }    
     p_pProps->SetProperty(pIOPropVSubsampling, propTypeUInt8, &vSampling, 1);
 
-    val = 'apch';
+    uint32_t val = clrAYUV;
+    p_pProps->SetProperty(pIOPropColorModel, propTypeUInt32, &val, 1);
+
+    val = 'ap4h';
     p_pProps->SetProperty(pIOPropFourCC, propTypeUInt32, &val, 1);
 
     
     return errNone;
 }
+
 void ProResEncoder::OpenAV()
 { 
     g_Log(logLevelInfo, "OpenAV");
@@ -341,7 +355,7 @@ void ProResEncoder::OpenAV()
 
     int width = m_CommonProps.GetWidth();
     int height = m_CommonProps.GetHeight();
-
+    int hSampling = m_profile >= FF_PROFILE_PRORES_4444 /* 4444 4444 hq */ ? 1 : 2;
     // Find the ProRes codec
     m_codec = avcodec_find_encoder(AV_CODEC_ID_PRORES);
     if (!m_codec) {
@@ -365,14 +379,13 @@ void ProResEncoder::OpenAV()
     m_codecContext->profile = m_profile;
     m_codecContext->codec_id = AV_CODEC_ID_PRORES;
     m_codecContext->codec_type = AVMEDIA_TYPE_VIDEO;
-    m_codecContext->pix_fmt = AV_PIX_FMT_YUV422P10;
+    m_codecContext->pix_fmt = hSampling == 1 ? AV_PIX_FMT_YUV444P10 : AV_PIX_FMT_YUV422P10;
     m_codecContext->thread_count = std::thread::hardware_concurrency();
     m_codecContext->framerate.num = m_CommonProps.GetFrameRateNum();
     m_codecContext->framerate.den = m_CommonProps.GetFrameRateDen();
     m_codecContext->time_base.num =  m_codecContext->framerate.den;
     m_codecContext->time_base.den =  m_codecContext->framerate.num;
     
-
     if (avcodec_open2(m_codecContext, m_codec, nullptr) < 0) {
         g_Log(logLevelError, "Could not open codec");
         return;
@@ -405,7 +418,6 @@ StatusCode ProResEncoder::DoOpen(HostBufferRef* p_pBuff)
 
     OpenAV();
 
-    
     uint64_t val = reinterpret_cast<uint64_t>(m_codec);
     StatusCode res = p_pBuff->SetProperty( pIOPropAVCodec, propTypeUInt64, reinterpret_cast<const void*>(&val), 1 );    
     if (res != errNone)
@@ -497,11 +509,11 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
 
           // Initialize the frame parameters
         float framerate = (float)m_codecContext->framerate.num / (float)m_codecContext->framerate.den;
-        frame->format = AV_PIX_FMT_YUV422P10;
+        int hSampling = m_profile >= FF_PROFILE_PRORES_4444 /* 4444 4444 hq */ ? 1 : 2;
+        frame->format = hSampling == 1 ? AV_PIX_FMT_YUV444P10 : AV_PIX_FMT_YUV422P10;
         frame->width =  m_codecContext->width;
         frame->height =  m_codecContext->height;            
         frame->pts = int64_t(pts * (90000./ framerate) );
-
 
         //g_Log(logLevelError, "PTS %ld", frame->pts );
 
@@ -513,22 +525,43 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         }
 
         uint16_t* pSrc = reinterpret_cast<uint16_t*>(const_cast<char*>(pBuf));
-
-
         for (int y = 0; y < height; ++y)
         {
+            g_Log(logLevelInfo, "X264 Plugin :: pcount %d", pSrc-reinterpret_cast<uint16_t*>(const_cast<char*>(pBuf) ));
             uint16_t* row = (uint16_t*)(frame->data[0] + y * frame->linesize[0]);
             uint16_t* rowU = (uint16_t*)(frame->data[1] + y * frame->linesize[1]);
             uint16_t* rowV = (uint16_t*)(frame->data[2] + y * frame->linesize[2]);
 
-            for (int x = 0; x < width; x += 2)
+
+            if ( hSampling == 1 )
             {
-                
+              for (int x = 0; x < width; x++) 
+              {
                 row[x] = pSrc[1] >> 6;
-                row[x + 1] = pSrc[3] >> 6;
-                rowU[x/2] = pSrc[0] >> 6;
-                rowV[x/2] = pSrc[2] >> 6;
+                rowU[x] = pSrc[2] >> 6;
+                rowV[x] = pSrc[3] >> 6;
                 pSrc += 4;
+              }
+            } else 
+            {
+              for (int x = 0; x < width; x++)
+              {
+                  
+                  row[x] = pSrc[1] >> 6;
+                  //row[x + 1] = pSrc[1] >> 6;
+                  rowU[x/2] = pSrc[2] >> 6;
+                  rowV[x/2] = pSrc[3] >> 6;
+                  pSrc += 4;
+              }
+            //for (int x = 0; x < width; x += 2) // assuming source is 
+            // {
+                
+            //     row[x] = pSrc[1] >> 6;
+            //     row[x + 1] = pSrc[3] >> 6;
+            //     rowU[x/2] = pSrc[0] >> 6;
+            //     rowV[x/2] = pSrc[2] >> 6;
+            //     pSrc += 4;
+            // }
             }
         }
 
