@@ -547,7 +547,6 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
               {
                   
                   row[x] = pSrc[1] >> 6;
-                  //row[x + 1] = pSrc[1] >> 6;
                   rowU[x/2] = pSrc[2] >> 6;
                   rowV[x/2] = pSrc[3] >> 6;
                   pSrc += 4;
