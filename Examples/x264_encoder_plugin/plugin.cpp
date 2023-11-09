@@ -75,10 +75,10 @@ StatusCode g_ListCodecs(HostListRef* p_pList)
 
 StatusCode g_ListContainers(HostListRef* p_pList)
 {
-    return errNone;
+    //return errNone;
 
     // Register dummy container if you want to try it, which only prints to the log without exporting any real file
-    // return DummyContainer::s_Register(p_pList);
+    return DummyContainer::s_Register(p_pList);
 }
 
 StatusCode g_GetEncoderSettings(unsigned char* p_pUUID, HostPropertyCollectionRef* p_pValues, HostListRef* p_pSettingsList)

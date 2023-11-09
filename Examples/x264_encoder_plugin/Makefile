@@ -6,7 +6,7 @@ X264_DIR = /home/jon/dev/resolve/build/
 BUILD_DIR = .
 SUBDIRS = wrapper
 
-CFLAGS += -I$(X264_DIR)/include
+CFLAGS += -I$(X264_DIR)/include -fPIC
 
 ifeq ($(OS_TYPE), Linux)
 LDFLAGS = -shared '-Wl,-rpath,$$ORIGIN' -Wl,-z,origin -lpthread  
@@ -54,3 +54,8 @@ clean-subdirs:
 	echo "Making clean in $$subdir"; \
 	(cd $$subdir; make clean; cd ..) \
 	done
+
+# install: $(TARGET)
+install: all
+	mkdir -p $(BINDIR)/x264_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
+	cp $(TARGET) $(BINDIR)/x264_encoder_plugin.dvcp.bundle/Contents/Linux-x86-64/
