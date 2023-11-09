@@ -197,8 +197,11 @@ StatusCode MovContainer::DoAddTrack(HostPropertyCollectionRef* p_pProps, HostPro
             return errFail;;
         }
 
+        AVDictionary* opts = NULL;
+        av_dict_set(&opts, "movflags", "+write_colr", 0);
+
         // Write the file header
-        if (avformat_write_header(m_outFormatContext, nullptr) < 0) {
+        if (avformat_write_header(m_outFormatContext, &opts) < 0) {
             g_Log(logLevelError,  "Error writing file header" );
             return errFail;
         }

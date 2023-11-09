@@ -36,8 +36,8 @@ int main() {
         return -1;
     }
 
-    int profile = FF_PROFILE_PRORES_4444;
-    //int profile = FF_PROFILE_PRORES_STANDARD;
+    //int profile = FF_PROFILE_PRORES_4444;
+    int profile = FF_PROFILE_PRORES_STANDARD;
     AVPixelFormat pix_fmt = profile >= FF_PROFILE_PRORES_4444 ? AV_PIX_FMT_YUV444P10 : AV_PIX_FMT_YUV422P10;
     int hSampling = pix_fmt == AV_PIX_FMT_YUV444P10 ? 1 : 2;
 
@@ -45,6 +45,11 @@ int main() {
     int framerate = 25;
     codecContext->width = 1920;
     codecContext->height = 1080;
+    codecContext->color_range = AVCOL_RANGE_MPEG; // limited
+    codecContext->color_trc = AVCOL_TRC_BT709; 
+    codecContext->color_primaries = AVCOL_PRI_BT709;
+    codecContext->colorspace = AVCOL_SPC_BT709;
+  
     codecContext->profile = profile;
     codecContext->pix_fmt = pix_fmt;
     codecContext->time_base = AVRational{1, framerate};
@@ -71,9 +76,11 @@ int main() {
         return -1;
     }
     
-
+    AVDictionary* opts = NULL;
+    av_dict_set(&opts, "movflags", "+write_colr", 0);
+    
     // Write the file header
-    if (avformat_write_header(outFormatContext, nullptr) < 0) {
+    if (avformat_write_header(outFormatContext, &opts) < 0) {
         std::cerr << "Error writing file header" << std::endl;
         return -1;
     }
@@ -103,6 +110,11 @@ int main() {
     frame->format = pix_fmt;
     frame->width = 1920;
     frame->height = 1080;
+    frame->color_primaries = AVCOL_PRI_BT709;
+    frame->color_trc = AVCOL_TRC_BT709;
+    frame->colorspace = AVCOL_SPC_BT709;
+    frame->color_range = AVCOL_RANGE_MPEG;
+    
 
     // Allocate memory for the frame data
     if (av_frame_get_buffer(frame, 0) < 0) {

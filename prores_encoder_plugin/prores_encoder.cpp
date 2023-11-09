@@ -385,6 +385,12 @@ void ProResEncoder::OpenAV()
     m_codecContext->framerate.den = m_CommonProps.GetFrameRateDen();
     m_codecContext->time_base.num =  m_codecContext->framerate.den;
     m_codecContext->time_base.den =  m_codecContext->framerate.num;
+
+    m_codecContext->color_primaries = AVCOL_PRI_BT709;
+    m_codecContext->color_trc = AVCOL_TRC_BT709;
+    m_codecContext->colorspace = AVCOL_SPC_BT709;
+    m_codecContext->color_range = AVCOL_RANGE_MPEG;
+    
     
     if (avcodec_open2(m_codecContext, m_codec, nullptr) < 0) {
         g_Log(logLevelError, "Could not open codec");
@@ -514,6 +520,11 @@ StatusCode ProResEncoder::DoProcess(HostBufferRef* p_pBuff)
         frame->width =  m_codecContext->width;
         frame->height =  m_codecContext->height;            
         frame->pts = int64_t(pts * (90000./ framerate) );
+
+        frame->color_primaries = AVCOL_PRI_BT709;
+        frame->color_trc = AVCOL_TRC_BT709;
+        frame->colorspace = AVCOL_SPC_BT709;
+        frame->color_range = AVCOL_RANGE_MPEG;
 
         //g_Log(logLevelError, "PTS %ld", frame->pts );
 
